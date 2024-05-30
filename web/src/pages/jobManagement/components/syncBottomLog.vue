@@ -302,16 +302,16 @@ export default {
 .jd-bottom {
   overflow: auto;
   width: 100%;
-  flex: 0 0 350px;
-  height: 350px !important;
+  flex: 0 0 380px;
+  height: 380px !important;
   background-color: white;
   position: relative;
   top: 0 !important;
   .jd-bottom-top {
-    width: 100px;
-    height: 48px;
-    background-color: #f8f9fc;
-    padding: 12px 24px;
+    max-width: 100px;
+    height: 43px;
+    background-color: #f8f8f8;
+    padding: 8px 24px;
     font-family: PingFangSC-Medium;
     font-size: 16px;
     color: rgba(0, 0, 0, 0.85);
@@ -319,7 +319,7 @@ export default {
     position: absolute;
     top: 0 !important;
     right: 24px;
-    z-index: 99;
+    z-index: 99999;
     text-align: right;
   }
 

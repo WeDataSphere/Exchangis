@@ -270,13 +270,14 @@ export default {
   height: 30%;
   bottom: 0;
   background-color: white;
+  box-shadow: 0px -2px 4px rgba(0, 0, 0, 0.05);
   .jd-bottom-top {
     width: calc(100% - 200px);
-    height: 48px;
+    height: 43px;
     position: fixed;
     bottom: 30%;
     background-color: #f8f9fc;
-    padding: 12px 24px;
+    padding: 8px 24px;
     font-family: PingFangSC-Medium;
     font-size: 16px;
     color: rgba(0, 0, 0, 0.85);
