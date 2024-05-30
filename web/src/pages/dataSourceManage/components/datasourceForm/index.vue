@@ -57,6 +57,11 @@ const typesMap = {
   defaultValue: 'value',
   // dataSource: 'options',
   dataSource: (data, source, self) => {
+    try {
+      return { options: JSON.parse(data.dataSource) };
+    } catch (error) {
+      console.log('继续判断是否需要加载接口')
+    }
     const fApi = self.fApi;
     if (typeof data.dataSource === 'string') {
       if (!/^https?:/.test(data.dataSource)) {
@@ -81,10 +86,7 @@ const typesMap = {
         fApi.refreshOptions();
       });
       return { options: [] };
-    }
-    try {
-      return { options: JSON.parse(data.dataSource) };
-    } catch (error) {
+    } else {
       return { options: [] };
     }
   },

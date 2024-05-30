@@ -153,6 +153,8 @@
                                 <!-- 字段映射 -->
                                 <FieldMap
                                     v-if="curTask"
+                                    v-bind:srcTableNotExist="curTask.dataSourceIds.source.tableNotExist"
+                                    v-bind:sinkTableNotExist="curTask.dataSourceIds.sink.tableNotExist"
                                     v-bind:fmData="curTask.transforms"
                                     v-bind:fieldsSink="fieldsSink"
                                     v-bind:fieldsSource="fieldsSource"
@@ -245,7 +247,7 @@
         </div>
     
         <!-- 执行日志  jd-bottom -->
-        <div v-show="visibleLog" class="jd-bottom jd-bottom-log" :style="bottomStyle">
+        <div :class="[visibleLog ? 'display-bottom' : 'hide-botttom']" class="jd-bottom jd-bottom-log" :style="bottomStyle">
             <div class="jd-bottom-top jd-bottom-log-top">
                 <!-- 放大 -->
                 <ExpandOutlined 
@@ -447,7 +449,7 @@ import { stubFalse } from 'lodash';
 const objectValueEmpty = (obj) => {
     let isEmpty = false;
     Object.keys(obj).forEach((o) => {
-        if (obj[o] == null || obj[o] == '' || obj[o] == undefined) {
+        if (obj[o] === null || obj[o] === '' || obj[o] === undefined) {
             isEmpty = true;
         }
     });
@@ -678,7 +680,9 @@ export default {
                 if (this.list.length) {
                     this.activeIndex = 0;
                     this.curTask = this.list[this.activeIndex];
-                    this.curTask._transforms = cloneDeep(this.curTask.transforms, 1)
+                    this.curTask._transforms = cloneDeep(this.curTask.transforms, 1);
+                    this.curTask.dataSourceIds.source.tableNotExist = !!this.curTask.transforms.srcTblNotExist;
+                    this.curTask.dataSourceIds.sink.tableNotExist = !!this.curTask.transforms.sinkTblNotExist;
                     this.curType = this.curTask.transforms.type;
                     // test 
                     console.log('当前任务详情', this.curTask)
@@ -763,7 +767,11 @@ export default {
             }
             this.activeIndex = index
             this.curTask = this.list[index];
-            this.curTask._transforms = cloneDeep(this.curTask.transforms, 1)
+            this.curTask._transforms = cloneDeep(this.curTask.transforms, 1);
+            //test 代码调试中:
+            console.log('%c%s','font-size: 24px;background: #5eec95', '调试', this.curTask)
+            this.curTask.dataSourceIds.source.tableNotExist = !!this.curTask.transforms.srcTblNotExist;
+            this.curTask.dataSourceIds.sink.tableNotExist = !!this.curTask.transforms.sinkTblNotExist;
             this.curType = this.curTask.transforms.type;
             this.addEnable = this.curTask.transforms.addEnable;
             this.transformEnable = this.curTask.transforms.transformEnable;
@@ -844,10 +852,14 @@ export default {
         updateProcessControl(settings) {
             this.curTask.settings = settings;
         },
-        getFieldsParams(dataSource) {
+        getFieldsParams(dataSource, isUpdate) {
             const { dataSourceIds, params } = dataSource;
             this.curTask.dataSourceIds = dataSourceIds;
             this.curTask.params = params;
+            if (isUpdate) {
+                this.curTask.transforms.srcTblNotExist = dataSourceIds.source.tableNotExist;
+                this.curTask.transforms.sinkTblNotExist = dataSourceIds.sink.tableNotExist;
+            }
             const source = this.curTask.dataSourceIds.source;
             const sink = this.curTask.dataSourceIds.sink;
             if (!source.type || !source.id || !sink.type || !sink.id) return null;
@@ -860,7 +872,9 @@ export default {
                 sinkDataSourceId: sink.id,
                 sinkDataBase: sink.db,
                 sinkTable: sink.table,
-                engine: this.jobData.engineType
+                engine: this.jobData.engineType,
+                srcTblNotExist: !!source.tableNotExist,
+                sinkTblNotExist: !!sink.tableNotExist
             };
         },
         convertDeductions(deductions) {
@@ -883,7 +897,7 @@ export default {
             return mapping;
         },
         updateSourceInfo(dataSource, firstInit) {
-            const data = this.getFieldsParams(dataSource);
+            const data = this.getFieldsParams(dataSource, true);
             if (data) {
                 getFields(data).then((res) => {
                     this.fieldsSource = res.sourceFields;
@@ -910,7 +924,7 @@ export default {
             }
         },
         updateSinkInfo(dataSource, firstInit) {
-            const data = this.getFieldsParams(dataSource);
+            const data = this.getFieldsParams(dataSource, true);
             if (data) {
                 getFields(data).then((res) => {
                     this.fieldsSource = res.sourceFields;
@@ -953,21 +967,72 @@ export default {
                 res.push(<li style="list-style: none;"><span style="margin-left: -30px;">配置任务中执行用户不可为空</span></li>);
             }
             jobs.forEach((job) => {
-                const { params, settings } = job;
+                const { params, settings, transforms } = job;
                 let isInsert = false
                 res.push(<li style="list-style: none;"><span style="margin-left: -30px;">{job.subJobName}:</span></li>);
                 for (const key in params) {
+                    let nullFormatUnique = {refId: ''}
+                    let transferModeUnique = {id: '', value: ''};
+                    params[key].forEach(i => {
+                        if (i.field === 'transferMode') {
+                            transferModeUnique = {value: i.value, id: i.id};
+                        } else if (i.field === 'nullFormat') {
+                            nullFormatUnique = {refId: i.refId};
+                        }
+                    })
                     params[key].forEach((i) => {
-                        let judePartition = i.value && i.field === "partition" &&
-                            (!Object.keys(i.value).length || Object.values(i.value).filter(v => v).length < Object.keys(i.value).length)
+                        // 判断分区alue有值的情况下可能为空的情况
+                        let judePartition = i.value && 
+                            i.field === "partition" &&
+                            ((Array.isArray(i.value) && (i.value.length < 1 || (i.value.length === 1 && !i.value[0].key && !i.value[0].value))) || 
+                            (!Object.keys(i.value).length || Object.values(i.value).filter(v => v).length < Object.keys(i.value).length));
                         if ((!i.value || judePartition) && i.required ) {
-                            if (!(i.field === "partition" && !i.value)) {
+                            const isPartitionEmpty = i.field === "partition" && !i.value;
+                            if (i.field === 'nullFormat') {
+                                if (transferModeUnique.id === nullFormatUnique.refId) {
+                                    if(transferModeUnique.value === '记录') {
+                                        isInsert = true;
+                                        res.push(<li>{i.label}不可为空</li>);
+                                    }
+                                }else {
+                                    isInsert = true;
+                                    res.push(<li>{i.label}不可为空</li>);
+                                }
+                            } else if (!isPartitionEmpty) {
                                 isInsert = true;
                                 res.push(<li>{i.label}不可为空</li>);
                             }
                         } else if (i.value && i.validateType === "REGEX") {
-                            const num_reg = new RegExp(`${i.validateRange}`);
-                            if (!num_reg.test(i.value)) {
+                            const value_reg = new RegExp(`${i.validateRange}`);
+                            const keyMap = { sinks: 'sink', sources: 'source' };
+                            if (i.field === "partition" && keyMap[key] && job.dataSourceIds[keyMap[key]].tableNotExist) {
+                                const value_reg = new RegExp(`${i.validateRange}`);
+                                // 非必填的情况下允许保存的分区 null, { a: b }, [{key: '', value}]
+                                const isPartionValid = !Array.isArray(i.value) || 
+                                    (Array.isArray(i.value) && (i.value.length < 1 || (i.value.length === 1 && !i.value[0].key && !i.value[0].value)));
+                                if (isPartionValid) {
+                                    return;
+                                } else if (i.value.some(item => !item.key)) {
+                                    isInsert = true;
+                                    res.push(<li>{i.label}key值不可为空</li>);
+                                } else if (i.value.some(item => !item.value)) {
+                                    isInsert = true;
+                                    res.push(<li>{i.label}value值不可为空</li>);
+                                } else if (i.value.some(item => !/^[a-zA-Z0-9_-]+$/.test(item.key))) {
+                                    isInsert = true;
+                                    res.push(<li>{i.label}key值只能为字母、数字、横线和下划线</li>);
+                                } else if (i.value.some(item => !value_reg.test(item.value))) {
+                                    isInsert = true;
+                                    res.push(<li>{i.label}value值过长</li>);
+                                } else {
+                                    const partitionKeys = i.value.map(item => item.key);
+                                    const filterPartitionKeys = [...new Set(partitionKeys)];
+                                    if (partitionKeys.length !== filterPartitionKeys.length) {
+                                        isInsert = true;
+                                        res.push(<li>{i.label}key值不能重复</li>);
+                                    }
+                                }
+                            } else if (!value_reg.test(i.value)) {
                                 isInsert = true;
                                 res.push(<li>{i.label}格式不正确</li>);
                             }
@@ -987,6 +1052,12 @@ export default {
                         }
                     }
                 });
+
+                const sinkFields = (transforms.mapping || []).map(item => item.sink_field_name).filter(item => item);
+                if(sinkFields.length && sinkFields.length > [...new Set(sinkFields)].length) {
+                    isInsert = true;
+                    res.push(<li>字段映射目的端字段存在重复</li>);
+                }
 
                 if (!isInsert) {
                     res.splice(res.length - 1, 1)
@@ -1060,25 +1131,61 @@ export default {
                 };
                 jobData.params.sources.forEach((source) => {
                     if (!(source.field === "partition" && !source.value)) {
-                        cur.params.sources.push({
-                            config_key: source.field, // UI中field
-                            config_name: source.label, // UI中label
-                            config_value: source.value, // UI中value
-                            sort: source.sort
-                        });
+                        if (source.field === "partition" && jobData.dataSourceIds.source.tableNotExist) {
+                            let config_obj = {};
+                            if (source.value && Array.isArray(source.value)) {
+                                source.value.forEach(item => {
+                                    config_obj[item.key] = item.value
+                                })
+                            } else {
+                                config_obj = source.value
+                            }
+                            cur.params.sources.push({
+                                config_key: source.field, // UI中field
+                                config_name: source.label, // UI中label
+                                config_value: config_obj ? {...config_obj} : config_obj, // UI中value
+                                sort: source.sort
+                            });
+                        } else {
+                            cur.params.sources.push({
+                                config_key: source.field, // UI中field
+                                config_name: source.label, // UI中label
+                                config_value: source.value, // UI中value
+                                sort: source.sort
+                            });
+                        }
                     }
                 });
-                jobData.params.sinks.forEach((source) => {
-                    if (!(source.field === "partition" && !source.value)) { //排除分区为空的情况
-                        cur.params.sinks.push({
-                            config_key: source.field, // UI中field
-                            config_name: source.label, // UI中label
-                            config_value: source.value, // UI中value
-                            sort: source.sort
-                        });
+                jobData.params.sinks.forEach((sink) => {
+                    if (!(sink.field === "partition" && !sink.value)) { //排除分区为空的情况
+                        if (sink.field === "partition" && jobData.dataSourceIds.sink.tableNotExist) {
+                            let config_obj = {};
+                            if (sink.value && Array.isArray(sink.value)) {
+                                sink.value.forEach(item => {
+                                    config_obj[item.key] = item.value
+                                })
+                            } else {
+                                config_obj = sink.value
+                            }
+                            cur.params.sinks.push({
+                                config_key: sink.field, // UI中field
+                                config_name: sink.label, // UI中label
+                                config_value: config_obj ? {...config_obj} : config_obj, // UI中value
+                                sort: sink.sort
+                            });
+                        } else {
+                            cur.params.sinks.push({
+                                config_key: sink.field, // UI中field
+                                config_name: sink.label, // UI中label
+                                config_value: sink.value, // UI中value
+                                sort: sink.sort
+                            });
+                        }
                     }
                 });
                 cur.transforms = jobData.transforms;
+                cur.transforms.srcTblNotExist = jobData.dataSourceIds.source.tableNotExist;
+                cur.transforms.sinkTblNotExist = jobData.dataSourceIds.sink.tableNotExist;
                 if (this.curType === 'MAPPING') { // 为字段映射时才需要
                     cur.transforms.addEnable = this.addEnable;
                     cur.transforms.transformEnable = this.transformEnable;
@@ -1550,11 +1657,17 @@ export default {
     height: 350px !important;
     position: relative;
     top: 0 !important;
+    &.hide-botttom {
+    display: none;
+    }
+    &.display-bottom {
+        display: block;
+    }
     .jd-bottom-top {
-      width: 100px;
-      height: 48px;
+      max-width: 100px;
+      height: 43px;
       background-color: #f8f9fc;
-      padding: 12px 24px;
+      padding: 8px 24px;
       font-family: PingFangSC-Medium;
       font-size: 16px;
       color: rgba(0, 0, 0, 0.85);
