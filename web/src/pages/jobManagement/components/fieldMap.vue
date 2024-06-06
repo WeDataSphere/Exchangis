@@ -45,7 +45,7 @@
 
       <div class="main-content" v-show="isFold"
         :class="{ 'text-danger': !fieldsSource.length && !fieldsSink.length }">
-        <div style="margin-bottom: 15px">
+        <div style="margin-bottom: 15px" v-if="((fieldsSource.length && fieldsSink.length) || selectType) && addEnabled">
           <a-button type="dashed" @click="addTableRow">新增</a-button>
         </div>
         <!-- left -->
@@ -299,7 +299,7 @@ export default defineComponent({
         let sinkItem = {};
         let transformerItem = {};
 
-        if (item.source_field_name && item.source_field_type) {
+        if ((item.source_field_name && item.source_field_type) || (item.sink_field_name && item.sink_field_type)) {
           sourceItem.key = idx + '';
           sourceItem.fieldName =
             item.source_field_name && item.source_field_name;

@@ -1,6 +1,7 @@
 <template>
   <div class="table-warp" style="padding-bottom: 32px;">
     <form-create v-model:api="fApi" v-model="formData" :rule="rule" :option="options" />
+    <div v-if="isShowWarnTips" class="table-bottom-warn-tips">账户私钥不保存，测试或保存前请重新输入私钥！</div>
     <a-button v-if="data.mode !== 'read'" type="primary" @click="handleTestConnect(row)">
       {{$t("dataSource.table.list.columns.actions.testConnectButton")}}
     </a-button>
@@ -237,6 +238,11 @@ export default {
       },
       deep: true,
     },
+  },
+  computed: {
+    isShowWarnTips() {
+      return this.data.id && this.formData.createSystem === 'TDSQL' && this.formData.authType === 'dpm';
+    }
   },
   created() {
     this.loading = true;
@@ -483,6 +489,12 @@ export default {
         width: 340px;
       }
     }
+  }
+  .table-bottom-warn-tips {
+    color: #faad14;
+    padding-left: 110px;
+    margin-top: -16px;
+    margin-bottom: 10px;
   }
 }
 </style>
