@@ -44,9 +44,11 @@
             >
               <a-form-item name="dsInfo">
                 <SelectDataSource
+                  key="source"
                   @updateDsInfo="updateSourceInfo"
                   :title="sourceTitle"
                   :engineType="engineType"
+                  :projectId="projectId"
                   direct="source"
                 />
               </a-form-item>
@@ -94,12 +96,14 @@
             >
               <a-form-item name="dsInfo2">
                 <SelectDataSource
+                  key="sink"
                   @updateDsInfo="updateSinkInfo"
                   :title="sinkTitle"
                   :style="styleObject"
                   :engineType="engineType"
                   direct="sink"
                   :sourceType="sourceType"
+                  :projectId="projectId"
                 />
               </a-form-item>
               <!-- 动态组件 -->
@@ -152,6 +156,7 @@ export default defineComponent({
   props: {
     dsData: Object,
     engineType: String,
+    projectId: String
   },
   emits: [
     "updateSourceInfo",
@@ -173,9 +178,9 @@ export default defineComponent({
     // 对象转标题
     const objToTitle = function (obj) {
       if (typeof obj !== "object") return "";
-      const { type, db, table, ds } = obj;
-      if (!type && !db && !table && !ds) return "请点击后选择";
-      return [type, ds, db, table];
+      const { type, db, table, name } = obj;
+      if (!type && !db && !table && !name) return "请点击后选择";
+      return [type, name, db, table];
     };
 
     let sourceTitle = ref(objToTitle(props.dsData.dataSourceIds.source));
@@ -272,7 +277,7 @@ export default defineComponent({
 
     const formRef = ref();
     // 选完
-    const updateSourceInfo = (dsInfo, id, tableNotExist) => {
+    const updateSourceInfo = (dsInfo, dsItem, tableNotExist) => {
       const info = dsInfo.split(".");
 
       // 修改来源数据源，清空目的数据源
@@ -281,14 +286,15 @@ export default defineComponent({
         id: '',
         db: '',
         table: '',
-        ds: ''
+        name: '',
+        creator: ''
       }
       sinkTitle.value = objToTitle({
         type: '',
         id: '',
         db: '',
         table: '',
-        ds: '',
+        name: '',
       })
       dataSource.params.sinks = []
       /*if ((dataSource.dataSourceIds.sink.type && dataSource.dataSourceIds.source.type !== 'HIVE')
@@ -307,10 +313,11 @@ export default defineComponent({
       srcTBNotExist.value = tableNotExist;
       dataSource.dataSourceIds.source.tableNotExist = tableNotExist;
       dataSource.dataSourceIds.source.type = info[0];
-      dataSource.dataSourceIds.source.ds = info[1];
+      dataSource.dataSourceIds.source.name = info[1];
       dataSource.dataSourceIds.source.db = info[2];
       dataSource.dataSourceIds.source.table = info[3];
-      dataSource.dataSourceIds.source.id = id;
+      dataSource.dataSourceIds.source.id = dsItem.id;
+      dataSource.dataSourceIds.source.creator = dsItem.createUser;
       getSourceParams(
         props.engineType,
         dataSource.dataSourceIds.source.type,
@@ -358,7 +365,7 @@ export default defineComponent({
         context.emit("updateSourceInfo", dataSource);
       });
     };
-    const updateSinkInfo = (dsInfo, id, tableNotExist) => {
+    const updateSinkInfo = (dsInfo, dsItem, tableNotExist) => {
       const info = dsInfo.split(".");
       if ((info[0] && info[0] !== 'HIVE')
         && (dataSource.dataSourceIds.source.type && dataSource.dataSourceIds.source.type !== 'HIVE')
@@ -368,7 +375,7 @@ export default defineComponent({
           id: "",
           db: "",
           table: "",
-          ds: "",
+          name: "",
         });
         return message.error("SQOOP引擎输入/输出数据源必须包含HIVE,请重新选择");
       }
@@ -376,10 +383,11 @@ export default defineComponent({
       sinkTBNotExist.value = tableNotExist;
       dataSource.dataSourceIds.sink.tableNotExist = tableNotExist;
       dataSource.dataSourceIds.sink.type = info[0];
-      dataSource.dataSourceIds.sink.ds = info[1];
+      dataSource.dataSourceIds.sink.name = info[1];
       dataSource.dataSourceIds.sink.db = info[2];
       dataSource.dataSourceIds.sink.table = info[3];
-      dataSource.dataSourceIds.sink.id = id;
+      dataSource.dataSourceIds.sink.id = dsItem.id;
+      dataSource.dataSourceIds.sink.creator = dsItem.createUser;
 
       getSourceParams(
         props.engineType,

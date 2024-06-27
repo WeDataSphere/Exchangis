@@ -22,10 +22,16 @@
             @change="handleChangeSql">
           </a-select>
           <span>数据源</span>
-          <a-select placeholder="请先选择数据源" style="width: 150px" v-model:value="dataSource"
-            @change="handleChangeDS" :options="
-              dataSourceList.map((ds) => ({ value: ds.value, label: ds.name }))
-            "></a-select>
+          <a-select
+              style="width: 150px"
+              v-model:value="dataSource"
+              showSearch
+              :filter-option="false"
+              :options="dataSourceList.map(ds => ({value: ds.value, label: ds.name}))"
+              @popupScroll="handleScrollDS"
+              @search="handleSearchDS"
+              @change="handleChangeDS">
+          </a-select>
         </a-space>
         <a-space size="middle" v-if="dataSource && showDbSearch">
           <span>搜索库</span>
@@ -56,7 +62,8 @@
 </template>
 
 <script>
-import { cloneDeep } from "lodash-es";
+import { useRoute } from 'vue-router';
+import { cloneDeep, debounce } from "lodash-es";
 import { PlusOutlined, MinusOutlined } from '@ant-design/icons-vue';
 import {
   getDataSourceTypes,
@@ -82,6 +89,7 @@ export default defineComponent({
     engineType: String,
     direct: String,
     sourceType: String,
+    projectId: String
   },
   components: {
     PlusOutlined,
@@ -102,13 +110,24 @@ export default defineComponent({
       dsId: '',
       curSql: '',
       dataSource: '',
-      dataSourceList: [],
       selectTable: '',
       searchWord: '',
       searchDB: '',
       authDbs: [],
       authTbls: [],
       tableNotExist: false,
+      currentPage: 1,
+      currentDSWord: '',
+      total: 0,
+      dataSourceItem: null
+    });
+    const dataSources = ref([]);
+    const dataSourceList = computed(() => {
+      let keyWord = 'readAble';
+      if (props.direct === 'sink') {
+        keyWord = 'writeAble';
+      }
+      return dataSources.value.filter((v) => v[keyWord]);
     });
     const currentDbValue = ref('');
     let spinning = ref(false);
@@ -130,36 +149,51 @@ export default defineComponent({
       });
       if (state.sqlSource) await createTree(state.sqlSource);
     }
+    const route = useRoute();
     // 根据数据类型ID的不同返回不同的数据源列表
-    const queryDataSource = async (typeId, sql) => {
-      // 这里前端目前不做分页 固定了 page 和 pageSize
+    const queryDataSource = async (name = '') => {
       let body = {
-        name: '',
-        typeId,
-        page: 1,
-        pageSize: 1000,
+        name,
+        typeId: state.sqlId,
+        page: state.currentPage,
+        pageSize: 100,
+        projectId: props.projectId
       };
       let res = [];
-      let keyWord = 'readAble';
-      if (props.direct === 'sink') {
-        keyWord = 'writeAble';
-      }
+      let _total = 0;
       try {
         let _res = await getDataSource(body);
-        const { list } = _res;
-        list
-          .filter((v) => v[keyWord])
-          .forEach((item) => {
+        const { list, total } = _res;
+        list.forEach((item) => {
             let o = Object.create(null);
             o.name = item.name;
             o.value = item.id;
             res.push({ ...o, ...item });
           });
+        _total = total;
       } catch (err) {
         console.log('err');
       }
-      return res;
+      dataSources.value = [...dataSources.value, ...res];
+      state.total = _total;
     };
+
+    // 实时搜索数据源
+    const handleSearchDS = debounce((name) => {
+      state.currentPage = 1;
+      state.currentDSWord = name;
+      dataSources.value = [];
+      queryDataSource(name);
+    }, 300);
+
+    const handleScrollDS = (e) => {
+      const { target } = e;
+      const { scrollTop, scrollHeight, offsetHeight } = target;
+      if(scrollTop + 2 + offsetHeight >= scrollHeight && state.total > dataSources.value.length) {
+        ++state.currentPage;
+        queryDataSource(state.currentDSWord);
+      }
+    }
 
     const showTableSearch = ref(false);
     const showDbSearch = ref(false);
@@ -169,9 +203,13 @@ export default defineComponent({
       state.curSql = sql;
       const cur = state.sqlList.filter((i) => i.value === sql)[0];
       state.sqlId = cur.id;
-      let dsOptions = await queryDataSource(cur.id, sql);
-      state.dataSourceList = dsOptions.length > 0 ? dsOptions : [];
+      state.total = 0;
+      state.currentPage = 1;
+      state.currentDSWord = '';
+      dataSources.value = [];
+      await queryDataSource();
       // 清空
+      state.dataSourceItem = null;
       state.dataSource = '';
       state.dsId = '';
       state.searchWord = '';
@@ -187,7 +225,7 @@ export default defineComponent({
     const handleChangeDS = async (ds, dbName = '') => {
       // 清空
       state.searchDB = '';
-      currentDbValue.value;
+      currentDbValue.value = "";
       if (dbName.toString() !== '[object Object]') {
         // 避免select组件传入默认参数
         state.searchDB = dbName;
@@ -197,9 +235,10 @@ export default defineComponent({
       showTableSearch.value = false;
       showDbSearch.value = false;
       createTree(ds, () => {
-        const cur = state.dataSourceList.filter((item) => {
+        const cur = dataSourceList.value.filter((item) => {
           return item.value === ds;
         })[0];
+        state.dataSourceItem = cur;
         state.dataSource = cur.name;
         state.dsId = cur.value;
         state.authDbs = (cur.authDbs || '').split(',').filter((v) => v);
@@ -212,7 +251,7 @@ export default defineComponent({
       spinning.value = true;
       const tree = [];
       // 这里 根据数据源请求 dbs
-      const cur = state.dataSourceList.filter((item) => {
+      const cur = dataSourceList.value.filter((item) => {
         return item.value === ds;
       })[0];
       let dbs;
@@ -293,11 +332,16 @@ export default defineComponent({
       state.dsId = '';
       state.curSql = '';
       state.dataSource = '';
+      state.dataSourceItem = null;
       state.selectTable = '';
       state.treeData = [];
       state.originTreeData = [];
       state.tableNotExist = false;
       expandedKeys.value = [];
+      state.total = 0;
+      state.currentPage = 1;
+      state.currentDSWord = '';
+      dataSources.value = [];
     };
     // 展示弹窗
     const showModal = async () => {
@@ -316,7 +360,7 @@ export default defineComponent({
         await handleChangeSql(selects[0]);
       }
       if (selects[1]) {
-        const cur = state.dataSourceList.filter((item) => {
+        const cur = dataSourceList.value.filter((item) => {
           return item.name === selects[1];
         })[0];
         await handleChangeDS(cur?.value, selects[2]);
@@ -345,15 +389,20 @@ export default defineComponent({
       }
       state.defaultSelect = `${state.curSql}.${state.dataSource}.${state.selectTable}`;
       visible.value = false;
-      context.emit('updateDsInfo', state.defaultSelect, state.dsId, state.tableNotExist);
+      context.emit('updateDsInfo', state.defaultSelect, state.dataSourceItem, state.tableNotExist);
       // 选择完 初始化数据
       state.curSql = '';
+      state.dataSourceItem = null;
       state.dataSource = '';
       state.selectTable = '';
       state.treeData = [];
       state.originTreeData = [];
       state.tableNotExist = false;
       expandedKeys.value = [];
+      state.total = 0;
+      state.currentPage = 1;
+      state.currentDSWord = '';
+      dataSources.value = [];
     };
     /**
      * 获取数据库下 所有表
@@ -461,6 +510,7 @@ export default defineComponent({
     };
     return {
       ...toRefs(state),
+      dataSourceList,
       selectItem,
       visible,
       showModal,
@@ -478,7 +528,9 @@ export default defineComponent({
       showTableSearch,
       showDbSearch,
       getIcon,
-      currentDbValue
+      currentDbValue,
+      handleScrollDS,
+      handleSearchDS
     };
   },
 });

@@ -39,7 +39,7 @@
       v-if="pauseLog.isPause"
       style="position: absolute;left:930px;z-index: 1;top: 8px"
     >{{pauseLog.pauseIsEnd ? '隐藏读取最后n行日志' : '恢复日志拉取' }}</a-button>
-    <div style="text-align: center;">
+    <div style="text-align: center;position: fixed;bottom: 12px;left: 50%;z-index: 9;">
       <a-button size="small" style="margin: 0 5px;" :disabled="isLoading" @click="getLog('pre')">上一页</a-button>
       <a-button size="small" style="margin: 0 5px;" :disabled="isLoading" @click="getLog('next')">下一页</a-button>
       <a-button size="small" type="primary" style="margin: 0 5px;" :disabled="isLoading" @click="getLog('new')">查看最新日志</a-button>
@@ -157,15 +157,19 @@ export default defineComponent({
     })
     const getLog = (type) => {
       recordLogs.value = {endLine: logs.endLine, isEnd: logs.isEnd};
-      let fromLine = 0;
+      let fromLine = 1;
       if (type === 'pre') {
         const page = Math.ceil((recordLogs.value.endLine || 0) / 50);
         if (page <= 1) {
           return message.warning("当前日志已经是第一页")
         }
-        fromLine = page > 2 ? (page-2) * 50 + 1 : 0;
+        fromLine = (page-2) * 50 + 1;
       } else if (type === 'next') {
-        fromLine = recordLogs.value.endLine ?  recordLogs.value.endLine + 1 : 0
+        if (recordLogs.value.endLine % 50 !== 0) {
+          logs.isEnd = true;
+          return message.warning("当前日志已经是最后一页");
+        }
+        fromLine = recordLogs.value.endLine + 1;
       }
       isLoading.value = true;
       if (curLogId === id) {
@@ -180,12 +184,6 @@ export default defineComponent({
             if(res.logs && JSON.stringify(res.logs) !== '{}') {
               resetData();
               _updateLog(res)
-            } else {
-              logs.endLine = res.endLine
-              logs.isEnd = true
-              if (res.isEnd) {
-                message.warning("当前日志已经是最后一页")
-              }
             }
           })
           .catch((err) => {
@@ -208,12 +206,6 @@ export default defineComponent({
             if(res.logs && JSON.stringify(res.logs) !== '{}') {
               resetData();
               _updateLog(res)
-            } else {
-              logs.endLine = res.endLine
-              logs.isEnd = true
-              if (res.isEnd) {
-                message.warning("当前日志已经是最后一页")
-              }
             }
           })
           .catch((err) => {
@@ -237,7 +229,7 @@ export default defineComponent({
       if (curId === id) {
         getJobExecLog({
           id: curId,
-          fromLine: 0,
+          fromLine: 1,
           onlyKeywords: searchKeyword.value,
           ignoreKeywords: ignoreKeyword.value || '[main],[SpringContextShutdownHook]',
           lastRows: lastRows.value
@@ -256,7 +248,7 @@ export default defineComponent({
         getTaskExecLog({
           taskId: curId,
           id: id,
-          fromLine: 0,
+          fromLine: 1,
           onlyKeywords: searchKeyword.value,
           ignoreKeywords: ignoreKeyword.value || '[main],[SpringContextShutdownHook]',
           lastRows: lastRows.value

@@ -124,8 +124,10 @@
                         <div>
                             <DataSource
                                 v-if="curTask"
+                                :key="curTask.subJobName"
                                 v-bind:dsData="curTask"
                                 v-bind:engineType="curTask.engineType"
+                                :projectId="jobData.projectId"
                                 @updateSourceInfo="updateSourceInfo"
                                 @updateSinkInfo="updateSinkInfo"
                                 @updateSourceParams="updateSourceParams"
@@ -488,6 +490,8 @@ const DEF_OPTIONS = [
     { label: '后置控制器', value: 'PROCESSOR'}
 ]
 
+const defaultMaxRows = Math.floor(260 / 22.2);
+
 export default {
     components: {
         SettingOutlined,
@@ -587,7 +591,7 @@ export default {
                 right: 0,
             },
             bottomStyle: '', //底部样式
-            maxRows: 10,
+            maxRows: defaultMaxRows,
             processTypes: [], // MAPPING字段映射 | PROCESSOR后置控制器
             curType: ''
         };
@@ -608,7 +612,7 @@ export default {
         activeKey(val, oldVal) {
             if (val !== '2') {
                 this.bottomStyle = "";
-                this.maxRows = 10;
+                this.maxRows = defaultMaxRows;
             }
         }
     },
@@ -652,6 +656,7 @@ export default {
                     item.engineType = data.engineType;
                 });
                 this.jobData = data;
+                this.jobData.projectId = String(data.projectId || '');
 
                 const configData = Object.create(null);
                 configData.executeNode = data.executeNode || '';
@@ -695,7 +700,7 @@ export default {
                 });
                 _config.jobParams = JSON.stringify(jobParams);
             }
-            _config.projectId = _this.$route.query.id
+            _config.projectId = _this.jobData.projectId
             updateTaskConfiguration(id, _config)
                 .then((res) => {
                     if(type !== 'init') message.success('更新/保存成功');
@@ -780,14 +785,14 @@ export default {
                         id: '',
                         db: '',
                         table: '',
-                        ds: ''
+                        name: ''
                     },
                     sink: {
                         type: '',
                         id: '',
                         db: '',
                         table: '',
-                        ds: ''
+                        name: ''
                     }
                 },
                 params: {
@@ -1090,8 +1095,22 @@ export default {
                     return message.error('未选择数据源库表');
                 }
                 cur.dataSources = {
-                    source_id: `${jobData.dataSourceIds.source.type}.${jobData.dataSourceIds.source.id}.${jobData.dataSourceIds.source.db}.${jobData.dataSourceIds.source.table}`,
-                    sink_id: `${jobData.dataSourceIds.sink.type}.${jobData.dataSourceIds.sink.id}.${jobData.dataSourceIds.sink.db}.${jobData.dataSourceIds.sink.table}`
+                    source: {
+                        id: jobData.dataSourceIds.source.id,
+                        type: jobData.dataSourceIds.source.type, 
+                        name: jobData.dataSourceIds.source.name, 
+                        db: jobData.dataSourceIds.source.db, 
+                        table: jobData.dataSourceIds.source.table,
+                        creator: jobData.dataSourceIds.source.creator
+                    },
+                    sink: {
+                        id: jobData.dataSourceIds.sink.id,
+                        type: jobData.dataSourceIds.sink.type, 
+                        name: jobData.dataSourceIds.sink.name, 
+                        db: jobData.dataSourceIds.sink.db, 
+                        table: jobData.dataSourceIds.sink.table,
+                        creator: jobData.dataSourceIds.sink.creator
+                    }
                 };
                 /* if (
           !jobData.params ||
@@ -1182,7 +1201,7 @@ export default {
             // test
             console.log(saveContent)
             saveProject(this.jobData.id, {
-                projectId:  this.$route.query.id,
+                projectId: this.jobData.projectId,
                 content: JSON.stringify(saveContent)
             }, type).then((res) => {
                 cb && cb();
@@ -1294,9 +1313,14 @@ export default {
                     message.error('查询任务列表失败');
                 });
         },
+        clearProgressTimer() {
+            if (this.progressTimer) {
+                clearInterval(this.progressTimer);
+            }
+        },
         getJobProgress(jobExecutionId) {
             this.getJobProgressInvoke(jobExecutionId);
-            clearInterval(this.progressTimer);
+            this.clearProgressTimer();
             this.progressTimer = setInterval(() => {
                 this.getJobProgressInvoke(jobExecutionId);
             }, 1000 * 5);
@@ -1325,6 +1349,7 @@ export default {
                 })
                 .catch((err) => {
                     message.error('查询进度失败');
+                    this.clearProgressTimer();
                 });
         },
         getTaskInfo(progress) {
@@ -1399,7 +1424,7 @@ export default {
             clearInterval(this.progressTimer);
             this.visibleLog = false;
             this.bottomStyle = "";
-            this.maxRows = 10;
+            this.maxRows = defaultMaxRows;
         },
         getEditableInput() {
             this.nameEditable = true;
@@ -1412,15 +1437,10 @@ export default {
         expandLog() {
             if (this.bottomStyle) {
                 this.bottomStyle = "";
-                this.maxRows = 10;
+                this.maxRows = defaultMaxRows;
             } else {
-                if (document.body.clientWidth > 1400) {
-                    this.bottomStyle = "flex: 0 0 578px; height: 578px !important;";
-                    this.maxRows = 20;
-                } else {
-                    this.bottomStyle = "flex: 0 0 464px; height: 464px !important;";
-                    this.maxRows = 15;
-                }
+                this.bottomStyle = "position: absolute;height: 100vh !important;";
+                this.maxRows = Math.floor((window.innerHeight - 140) / 22.2);
             }
         },
         // 切换控制器和映射
@@ -1472,7 +1492,7 @@ export default {
   position: relative;
   display: flex;
   flex-direction: column;
-  height: calc(100vh - 22px);
+  height: 100vh;
   .tools-bar {
     width: 100%;
     border-bottom: 1px solid #dee4ec;
@@ -1625,10 +1645,10 @@ export default {
     overflow: auto;
     width: 100%;
     background-color: white;
-    flex: 0 0 350px;
-    height: 350px !important;
+    flex: 0 0 400px;
+    height: 400px !important;
     position: relative;
-    top: 0 !important;
+    top: 0;
     &.hide-botttom {
         display: none;
     }
@@ -1646,7 +1666,7 @@ export default {
       font-weight: 500;
       position: absolute;
       top: 0 !important;
-      right: 24px;
+      right: 0px;
       z-index: 9999;
       text-align: right;
     }
@@ -1661,7 +1681,7 @@ export default {
       }
     }
     .log-bottom-content {
-      padding: 0 24px;
+      padding: 0 0 0 24px;
     }
 
     .job-progress-wrap {

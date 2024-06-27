@@ -201,8 +201,13 @@ export default {
           message.error("查询任务列表失败");
         })
     },
+    clearProgressTimer() {
+      if (this.progressTimer) {
+        clearInterval(this.progressTimer);
+      }
+    },
     getJobProgressWithPoll() {
-      clearInterval(this.progressTimer)
+      this.clearProgressTimer();
       this.getJobProgress()
       this.progressTimer = setInterval(() => {
         this.getJobProgress()
@@ -214,11 +219,12 @@ export default {
         .then(res => {
           this.jobStatus = res.status
           if (res.allTaskStatus && unfinishedStatusList.indexOf(res.status) === -1) {
-            clearInterval(this.progressTimer)
+            this.clearProgressTimer();
           }
         })
         .catch(err => {
           message.error("查询job状态失败");
+          this.clearProgressTimer();
         })
       getProgress(this.jobExecutionId)
         .then(res => {
@@ -235,6 +241,7 @@ export default {
         })
         .catch(err => {
           message.error("查询进度失败");
+          this.clearProgressTimer();
         })
     },
     getTaskInfo(progress) {
