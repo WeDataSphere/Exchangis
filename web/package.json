@@ -48,7 +48,6 @@
   "dependencies": {
     "@ant-design/icons-vue": "6.0.1",
     "@fesjs/fes": "2.1.4",
-    "@fesjs/fes-design": "0.8.43",
     "@fesjs/plugin-access": "2.0.6",
     "@fesjs/plugin-enums": "2.0.2",
     "@fesjs/plugin-layout": "2.0.9",
@@ -63,8 +62,9 @@
     "moment": "2.29.4",
     "monaco-editor": "0.34.0",
     "monaco-editor-webpack-plugin": "7.0.1",
-    "vue": "3.2.4",
-    "vue-request": "1.2.3"
+    "vue": "3.1.4",
+    "vue-request": "1.2.3",
+    "vue-i18n": "9.1.9"
   },
   "private": true
 }
