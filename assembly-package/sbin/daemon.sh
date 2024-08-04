@@ -15,7 +15,6 @@
 # limitations under the License.
 #
 
-load_env_definitions ${ENV_FILE}
 if [[ "x"${EXCHANGIS_HOME} != "x" ]]; then
   source ${EXCHANGIS_HOME}/sbin/launcher.sh
   source ${EXCHANGIS_HOME}/sbin/common.sh
@@ -23,6 +22,7 @@ else
   source ./launcher.sh
   source ./common.sh
 fi
+load_env_definitions ${ENV_FILE}
 
 usage(){
   echo "Usage is [start|stop|restart {server}]"
