@@ -212,10 +212,8 @@ public class ExchangisDataSourceRestfulApi {
         try {
             String comment = dataSourceCreateVo.getComment();
             String createSystem = dataSourceCreateVo.getCreateSystem();
-            if (StringUtils.equals("true", DB_PWD_ENCRYPT.getValue())) {
-                dataSourceCreateVo.getConnectParams().put("isEncrypt", "1");
-            } else {
-                dataSourceCreateVo.getConnectParams().put("isEncrypt", "0");
+            if (dataSourceCreateVo.getConnectParams().containsKey("isEncrypt")) {
+                dataSourceCreateVo.getConnectParams().remove("isEncrypt");
             }
             if (Objects.isNull(comment)) {
                 throw new ExchangisDataSourceException(ExchangisDataSourceExceptionCode.PARAMETER_INVALID.getCode(),
@@ -307,10 +305,8 @@ public class ExchangisDataSourceRestfulApi {
                 return Message.error("[Error](" + fieldError.getField() + "):" + fieldError.getDefaultMessage());
             }
         }
-        if (StringUtils.equals("true", DB_PWD_ENCRYPT.getValue())) {
-            updateVo.getConnectParams().put("isEncrypt", "1");
-        } else {
-            updateVo.getConnectParams().put("isEncrypt", "0");
+        if (updateVo.getConnectParams().containsKey("isEncrypt")) {
+            updateVo.getConnectParams().remove("isEncrypt");
         }
         try{
             String createSystem = updateVo.getCreateSystem();
