@@ -38,7 +38,7 @@
 
 	<properties>
 		<revision>1.1.7</revision>
-		<dss.version>1.8.0-SNAPSHOT</dss.version>
+		<dss.version>1.2.2</dss.version>
 		<linkis.version>1.7.0</linkis.version>
 		<streamis.version>0.1.0-SNAPSHOT</streamis.version>
 		<maven-compiler-plugin.version>3.8.1</maven-compiler-plugin.version>
