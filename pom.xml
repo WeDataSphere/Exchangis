@@ -128,9 +128,14 @@
 				</exclusions>
 			</dependency>
 			<dependency>
+				<groupId>org.mybatis</groupId>
+				<artifactId>mybatis</artifactId>
+				<version>3.5.9</version>
+			</dependency>
+			<dependency>
 				<groupId>com.baomidou</groupId>
 				<artifactId>mybatis-plus</artifactId>
-				<version>3.5.7</version>
+				<version>3.5.9</version>
 			</dependency>
 			<dependency>
 				<groupId>org.apache.linkis</groupId>
