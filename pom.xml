@@ -64,10 +64,9 @@
 		<httpmime.version>4.5.4</httpmime.version>
 		<beanutils.version>1.9.4</beanutils.version>
 		<project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-		<spring.version>5.2.12.RELEASE</spring.version>
+		<spring.version>5.3.34</spring.version>
 		<mybatis.spring.boot.version>2.1.2</mybatis.spring.boot.version>
-		<spring.boot.version>2.3.7.RELEASE</spring.boot.version>
-		<spring.cloud.version>2.2.6.RELEASE</spring.cloud.version>
+		<spring.boot.version>2.7.12</spring.boot.version>
 		<commons.math.version>3.1.1</commons.math.version>
 		<commons.lang3.version>3.8.1</commons.lang3.version>
 		<commons.lang.version>2.6</commons.lang.version>
@@ -121,27 +120,6 @@
 				<groupId>org.apache.linkis</groupId>
 				<artifactId>linkis-mybatis</artifactId>
 				<version>${linkis.version}</version>
-<!--				<exclusions>-->
-<!--					<exclusion>-->
-<!--						<groupId>com.baomidou</groupId>-->
-<!--						<artifactId>mybatis-plus</artifactId>-->
-<!--					</exclusion>-->
-<!--				</exclusions>-->
-			</dependency>
-			<dependency>
-				<groupId>org.mybatis</groupId>
-				<artifactId>mybatis</artifactId>
-				<version>3.5.7</version>
-			</dependency>
-			<dependency>
-				<groupId>org.mybatis</groupId>
-				<artifactId>mybatis</artifactId>
-				<version>3.5.9</version>
-			</dependency>
-			<dependency>
-				<groupId>com.baomidou</groupId>
-				<artifactId>mybatis-plus</artifactId>
-				<version>3.5.9</version>
 			</dependency>
 			<dependency>
 				<groupId>org.apache.linkis</groupId>
@@ -160,7 +138,34 @@
 						<groupId>org.yaml</groupId>
 						<artifactId>snakeyaml</artifactId>
 					</exclusion>
+					<exclusion>
+						<groupId>org.springframework</groupId>
+						<artifactId>spring-aop</artifactId>
+					</exclusion>
+					<exclusion>
+						<groupId>org.springframework</groupId>
+						<artifactId>spring-web</artifactId>
+					</exclusion>
+					<exclusion>
+						<groupId>org.springframework</groupId>
+						<artifactId>spring-webmvc</artifactId>
+					</exclusion>
 				</exclusions>
+			</dependency>
+			<dependency>
+				<groupId>org.springframework</groupId>
+				<artifactId>spring-aop</artifactId>
+				<version>${spring.version}</version>
+			</dependency>
+			<dependency>
+				<groupId>org.springframework</groupId>
+				<artifactId>spring-web</artifactId>
+				<version>${spring.version}</version>
+			</dependency>
+			<dependency>
+				<groupId>org.springframework</groupId>
+				<artifactId>spring-webmvc</artifactId>
+				<version>${spring.version}</version>
 			</dependency>
 			<!--linkis http support-->
 			<dependency>
