@@ -236,8 +236,8 @@ public abstract class AutoColumnSubExchangisJobHandler extends AbstractPartition
                         continue;
                     }
                 }
+                throw new ExchangisJobException.Runtime(-1, "Unable to find match column: [" + name + "] (表中找不到对应的字段)", null);
             }
-            throw new ExchangisJobException.Runtime(-1, "Unable to find match column: [" + name + "] (表中找不到对应的字段)", null);
         }
     }
 
