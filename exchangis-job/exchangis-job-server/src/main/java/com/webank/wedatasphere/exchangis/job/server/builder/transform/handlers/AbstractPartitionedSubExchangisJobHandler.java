@@ -19,12 +19,12 @@ public abstract class AbstractPartitionedSubExchangisJobHandler extends AuthEnab
     /**
      * Database
      */
-    private static final JobParamDefine<String> DATABASE = JobParams.define(JobParamConstraints.DATABASE);
+    private static final JobParamDefine<String>  HIVE_DATABASE = JobParams.define("hiveDatabase", JobParamConstraints.DATABASE);
 
     /**
      * Table
      */
-    private static final JobParamDefine<String> TABLE = JobParams.define(JobParamConstraints.TABLE);
+    private static final JobParamDefine<String> HIVE_TABLE = JobParams.define("hiveTable", JobParamConstraints.TABLE);
 
     /**
      * Table partition
@@ -37,8 +37,8 @@ public abstract class AbstractPartitionedSubExchangisJobHandler extends AuthEnab
     protected static final JobParamDefine<List<String>> PARTITION_KEYS = JobParams.define("partitionKeys", paramSet -> {
         JobParam<String> dataSourceId = paramSet.get(JobParamConstraints.DATA_SOURCE_ID);
         List<String> partitionKeys = new ArrayList<>();
-        String database = DATABASE.getValue(paramSet);
-        String table = TABLE.getValue(paramSet);
+        String database = HIVE_DATABASE.getValue(paramSet);
+        String table = HIVE_TABLE.getValue(paramSet);
         JobParam<String> dsCreator = paramSet.get(JobParamConstraints.DATA_SOURCE_CREATOR);
         String dsOwner = Objects.nonNull(dsCreator) ? dsCreator.getValue() : GlobalConfiguration.getAdminUser();
         try {
