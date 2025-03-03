@@ -1,5 +1,6 @@
 package com.webank.wedatasphere.exchangis.job.server.builder.transform.handlers;
 
+import org.apache.commons.lang3.StringUtils;
 import com.webank.wedatasphere.exchangis.common.config.GlobalConfiguration;
 import com.webank.wedatasphere.exchangis.datasource.core.exception.ExchangisDataSourceException;
 import com.webank.wedatasphere.exchangis.datasource.core.service.MetadataInfoService;
@@ -20,11 +21,13 @@ public abstract class AbstractPartitionedSubExchangisJobHandler extends AuthEnab
      * Database
      */
     private static final JobParamDefine<String>  HIVE_DATABASE = JobParams.define("hiveDatabase", JobParamConstraints.DATABASE);
+    private static final JobParamDefine<String>  DATABASE = JobParams.define("database", JobParamConstraints.DATABASE);
 
     /**
      * Table
      */
     private static final JobParamDefine<String> HIVE_TABLE = JobParams.define("hiveTable", JobParamConstraints.TABLE);
+    private static final JobParamDefine<String> TABLE = JobParams.define("table", JobParamConstraints.TABLE);
 
     /**
      * Table partition
@@ -37,8 +40,14 @@ public abstract class AbstractPartitionedSubExchangisJobHandler extends AuthEnab
     protected static final JobParamDefine<List<String>> PARTITION_KEYS = JobParams.define("partitionKeys", paramSet -> {
         JobParam<String> dataSourceId = paramSet.get(JobParamConstraints.DATA_SOURCE_ID);
         List<String> partitionKeys = new ArrayList<>();
-        String database = HIVE_DATABASE.getValue(paramSet);
-        String table = HIVE_TABLE.getValue(paramSet);
+        String database = DATABASE.getValue(paramSet);
+        if (StringUtils.isBlank(database)) {
+            database = HIVE_DATABASE.getValue(paramSet);
+        }
+        String table = TABLE.getValue(paramSet);
+        if (StringUtils.isBlank(table)) {
+            table = HIVE_TABLE.getValue(paramSet);
+        }
         JobParam<String> dsCreator = paramSet.get(JobParamConstraints.DATA_SOURCE_CREATOR);
         String dsOwner = Objects.nonNull(dsCreator) ? dsCreator.getValue() : GlobalConfiguration.getAdminUser();
         try {
