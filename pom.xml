@@ -40,8 +40,6 @@
 		<revision>1.1.8-webank</revision>
 		<dss.version>1.8.0-SNAPSHOT</dss.version>
 		<linkis.version>1.9.0-wds</linkis.version>
-<!--		<linkis-computation-client.version>1.6.0-wds</linkis-computation-client.version>-->
-<!--		<linkis.datasource.version>1.5.0-wds-SNAPSHOT</linkis.datasource.version>-->
 		<streamis.version>0.1.0-SNAPSHOT</streamis.version>
 		<spring-boot.version>2.7.10</spring-boot.version>
 		<maven-compiler-plugin.version>3.8.1</maven-compiler-plugin.version>
@@ -159,12 +157,32 @@
 			</dependency>
 			<dependency>
 				<groupId>org.springframework</groupId>
+				<artifactId>spring-beans</artifactId>
+				<version>${spring.version}</version>
+			</dependency>
+			<dependency>
+				<groupId>org.springframework</groupId>
 				<artifactId>spring-web</artifactId>
 				<version>${spring.version}</version>
 			</dependency>
 			<dependency>
 				<groupId>org.springframework</groupId>
 				<artifactId>spring-webmvc</artifactId>
+				<version>${spring.version}</version>
+			</dependency>
+			<dependency>
+				<groupId>org.springframework</groupId>
+				<artifactId>spring-context</artifactId>
+				<version>${spring.version}</version>
+			</dependency>
+			<dependency>
+				<groupId>org.springframework</groupId>
+				<artifactId>spring-context-support</artifactId>
+				<version>${spring.version}</version>
+			</dependency>
+			<dependency>
+				<groupId>org.springframework</groupId>
+				<artifactId>spring-expression</artifactId>
 				<version>${spring.version}</version>
 			</dependency>
 			<!--linkis http support-->
