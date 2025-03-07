@@ -74,6 +74,8 @@
 		<jobmanager.version>0.1.0-SNAPSHOT</jobmanager.version>
 		<jasypt.version>1.9.3</jasypt.version>
 		<xstream.version>1.4.21</xstream.version>
+		<netty.version>4.1.118.Final</netty.version>
+		<protobuf-java.version>3.25.5</protobuf-java.version>
 	</properties>
 
 	<modules>
@@ -148,7 +150,16 @@
 						<groupId>org.springframework</groupId>
 						<artifactId>spring-webmvc</artifactId>
 					</exclusion>
+					<exclusion>
+						<groupId>io.netty</groupId>
+						<artifactId>netty-all</artifactId>
+					</exclusion>
 				</exclusions>
+			</dependency>
+			<dependency>
+				<groupId>io.netty</groupId>
+				<artifactId>netty-all</artifactId>
+				<version>${netty.version}</version>
 			</dependency>
 			<dependency>
 				<groupId>org.springframework</groupId>
@@ -230,6 +241,11 @@
 				<artifactId>xstream</artifactId>
 				<groupId>com.thoughtworks.xstream</groupId>
 				<version>${xstream.version}</version>
+			</dependency>
+			<dependency>
+				<artifactId>com.google.protobuf</artifactId>
+				<groupId>protobuf-java</groupId>
+				<version>${protobuf-java.version}</version>
 			</dependency>
 		</dependencies>
 	</dependencyManagement>
