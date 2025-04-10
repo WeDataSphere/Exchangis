@@ -858,7 +858,15 @@ public class DefaultDataSourceService extends AbstractDataSourceService
                 LinkisDataSourceRemoteClient::getConnectParams, CLIENT_DATASOURCE_PARAMS_GET_ERROR.getCode(),
                 "");
 
-        return result.getConnectParams();
+
+        Map<String, Object> connectParams = result.getConnectParams();
+        if (Objects.nonNull(connectParams) && connectParams.containsKey("password")
+                && StringUtils.equals(String.valueOf(connectParams.get("isEncrypt")), "1")) {
+            String decrypt = AESUtils.decrypt(connectParams.get("password").toString(),
+                    LINKIS_DATASOURCE_AES_KEY.getValue());
+            connectParams.replace("password", decrypt);
+        }
+        return connectParams;
     }
 
     /**
