@@ -39,9 +39,9 @@ INSERT INTO `dss_appconn_instance`(
 VALUES (
            @dss_appconn_mlssId,
            'DEV',
-           'http://10.107.127.19:30793/',
-           '{"MLSS-SecretKey":"MLFLOW","MLSS-Auth-Type":"SYSTEM","MLSS-APPSignature":"MLFLOW","MLSS-BaseUrl":"http://10.107.127.19:30793","baseUrl":"http://10.107.127.19:30793","MLSS-ModelMonitoring-JAR":"/appcom/Install/quickml/qml_algo/hwenzan/qml_algo.jar"}',
-           'http://10.107.127.19:30793/#/mlFlow');
+           'http://127.0.0.1:30793/',
+           '{"MLSS-SecretKey":"MLFLOW","MLSS-Auth-Type":"SYSTEM","MLSS-APPSignature":"MLFLOW","MLSS-BaseUrl":"http://127.0.0.1:30793","baseUrl":"http://127.0.0.1:30793","MLSS-ModelMonitoring-JAR":"/appcom/Install/quickml/qml_algo/hwenzan/qml_algo.jar"}',
+           'http://127.0.0.1:30793/#/mlFlow');
 
 
 INSERT INTO `dss_appconn_instance`(
@@ -53,9 +53,9 @@ INSERT INTO `dss_appconn_instance`(
 VALUES (
            @dss_appconn_mlssId,
            'PROD',
-           'http://10.107.127.19:30793/',
-           '{"MLSS-SecretKey":"MLFLOW","MLSS-Auth-Type":"SYSTEM","MLSS-APPSignature":"MLFLOW","MLSS-BaseUrl":"http://10.107.127.19:30793","baseUrl":"http://10.107.127.19:30793","MLSS-ModelMonitoring-JAR":"/appcom/Install/quickml/qml_algo/hwenzan/qml_algo.jar"}',
-           'http://10.107.127.19:30793/#/mlFlow');
+           'http://127.0.0.1:30793/',
+           '{"MLSS-SecretKey":"MLFLOW","MLSS-Auth-Type":"SYSTEM","MLSS-APPSignature":"MLFLOW","MLSS-BaseUrl":"http://127.0.0.1:30793","baseUrl":"http://127.0.0.1:30793","MLSS-ModelMonitoring-JAR":"/appcom/Install/quickml/qml_algo/hwenzan/qml_algo.jar"}',
+           'http://127.0.0.1:30793/#/mlFlow');
 
 select @dss_mlssId:=name from `dss_workflow_node` where `node_type` = 'linkis.appconn.mlss';
 delete from `dss_workflow_node_to_group` where `node_id`=@dss_mlssId;
