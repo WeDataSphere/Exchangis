@@ -38,3 +38,5 @@ web/dist
 workspace/
 
 .flattened-pom.xml
+
+.claude
