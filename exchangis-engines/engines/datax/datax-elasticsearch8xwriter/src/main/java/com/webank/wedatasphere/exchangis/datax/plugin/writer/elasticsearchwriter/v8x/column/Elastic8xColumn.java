@@ -21,16 +21,17 @@ import com.alibaba.datax.common.element.Column;
 import com.alibaba.datax.common.element.Record;
 import com.alibaba.datax.common.exception.DataXException;
 import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.webank.wedatasphere.exchangis.datax.plugin.writer.elasticsearchwriter.v8x.Elastic8xKey;
 import com.webank.wedatasphere.exchangis.datax.plugin.writer.elasticsearchwriter.v8x.Elastic8xWriterErrorCode;
 import com.webank.wedatasphere.exchangis.datax.util.Json;
 import org.apache.commons.lang3.StringUtils;
+import org.joda.time.DateTime;
+import org.joda.time.DateTimeZone;
+import org.joda.time.format.DateTimeFormat;
+import org.joda.time.format.DateTimeFormatter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.text.SimpleDateFormat;
-import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -234,11 +235,10 @@ public class Elastic8xColumn {
      */
     private static Object parseObject(String rawData) {
         try {
-            ObjectMapper mapper = new ObjectMapper();
             if (rawData.startsWith(ARRAY_PREFIX) && rawData.endsWith(ARRAY_SUFFIX)) {
-                return mapper.readValue(rawData, Object.class);
+                return Json.fromJson(rawData, Object.class);
             }
-            return mapper.readValue(rawData, Map.class);
+            return Json.fromJson(rawData, Map.class);
         } catch (Exception e) {
             LOG.warn("Failed to parse object: {}, returning raw string", rawData, e);
             return rawData;
@@ -249,22 +249,17 @@ public class Elastic8xColumn {
      * 解析日期类型
      */
     private static String parseDate(Elastic8xColumn config, Column column) {
+        DateTimeZone dateTimeZone = DateTimeZone.getDefault();
+        if (StringUtils.isNotBlank(config.getTimezone())) {
+            dateTimeZone = DateTimeZone.forID(config.getTimezone());
+        }
         String output;
         if (column.getType() == Column.Type.DATE) {
-            // DataX Column类型为DATE，直接转换为ISO 8601格式
-            SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'");
-            output = sdf.format(new Date(column.asLong()));
+            output = new DateTime(column.asLong(), dateTimeZone).toString();
         } else if (StringUtils.isNotBlank(config.getFormat())) {
-            // 使用配置的日期格式解析
-            SimpleDateFormat sdf = new SimpleDateFormat(config.getFormat());
-            try {
-                Date date = sdf.parse(column.asString());
-                SimpleDateFormat outputSdf = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'");
-                output = outputSdf.format(date);
-            } catch (Exception e) {
-                LOG.warn("Failed to parse date with format: {}, using raw string", config.getFormat(), e);
-                output = column.asString();
-            }
+            DateTimeFormatter formatter = DateTimeFormat.forPattern(config.getFormat());
+            output = formatter.withZone(dateTimeZone)
+                    .parseDateTime(column.asString()).toString();
         } else {
             output = column.asString();
         }
@@ -277,11 +272,9 @@ public class Elastic8xColumn {
      */
     private static double[] parseVector(Column column) {
         try {
-            ObjectMapper objectMapper = new ObjectMapper();
-
             // 解析JSON数组字符串
             String rawData = column.asString();
-            JsonNode jsonNode = objectMapper.readTree(rawData);
+            JsonNode jsonNode = Json.getMapper().readTree(rawData);
             if (jsonNode.isArray()) {
                 double[] vector = new double[jsonNode.size()];
                 for (int i = 0; i < jsonNode.size(); i++) {

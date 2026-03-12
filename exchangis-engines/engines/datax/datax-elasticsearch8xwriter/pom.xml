@@ -40,16 +40,26 @@
             </exclusions>
         </dependency>
 
-        <!-- Jackson for JSON processing -->
+        <!-- Joda Time for date parsing (same as ES6) -->
+        <dependency>
+            <groupId>joda-time</groupId>
+            <artifactId>joda-time</artifactId>
+            <version>2.9.9</version>
+            <scope>provided</scope>
+        </dependency>
+
+        <!-- Jackson for JSON processing (provided by datax-core) -->
         <dependency>
             <groupId>com.fasterxml.jackson.core</groupId>
             <artifactId>jackson-databind</artifactId>
+            <scope>provided</scope>
         </dependency>
 
-        <!-- Commons Lang3 -->
+        <!-- Commons Lang3 (provided by datax-core) -->
         <dependency>
             <groupId>org.apache.commons</groupId>
             <artifactId>commons-lang3</artifactId>
+            <scope>provided</scope>
         </dependency>
 
         <dependency>
