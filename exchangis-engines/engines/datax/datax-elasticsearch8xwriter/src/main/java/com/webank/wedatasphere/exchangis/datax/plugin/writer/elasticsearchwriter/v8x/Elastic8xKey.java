@@ -150,4 +150,9 @@ public final class Elastic8xKey {
      * Alias for CLIENT_CONFIG_CONN_TIMEOUT_MS (using CLIENT_CONFIG_CONN_TIMEOUT)
      */
     static final String CLIENT_CONFIG_CONN_TIMEOUT_MS = CLIENT_CONFIG_CONN_TIMEOUT;
+
+    /**
+     * Field properties key (used in mapping)
+     */
+    static final String FIELD_PROPS = "properties";
 }
