@@ -97,10 +97,35 @@ public class Elastic8xWriter extends Writer {
             Elastic8xRestClient restClient;
             Map<String, Object> clientConfig = jobConf.getMap(Elastic8xKey.CLIENT_CONFIG);
 
-            if (StringUtils.isNotBlank(userName) && StringUtils.isNotBlank(password)) {
-                restClient = Elastic8xRestClient.custom(processedEndPoints, userName, password, clientConfig);
+            // 如果secure为true,使用SSL连接 / If secure is true, use SSL connection
+            if (secure) {
+                String keyStorePath = jobConf.getString(Elastic8xKey.KEYSTORE_PATH, "");
+                String keyStorePassword = jobConf.getString(Elastic8xKey.KEYSTORE_PASSWORD, "");
+
+                // 如果提供了keystore,使用sslCustom / If keystore is provided, use sslCustom
+                if (StringUtils.isNotBlank(keyStorePath)) {
+                    if (StringUtils.isNotBlank(userName) && StringUtils.isNotBlank(password)) {
+                        restClient = Elastic8xRestClient.sslCustom(processedEndPoints, userName, password,
+                                keyStorePath, keyStorePassword, clientConfig);
+                    } else {
+                        restClient = Elastic8xRestClient.sslCustom(processedEndPoints, keyStorePath,
+                                keyStorePassword, clientConfig);
+                    }
+                } else {
+                    // 没有keystore,使用普通custom(但URL已是https) / No keystore, use custom (but URL is already https)
+                    if (StringUtils.isNotBlank(userName) && StringUtils.isNotBlank(password)) {
+                        restClient = Elastic8xRestClient.custom(processedEndPoints, userName, password, clientConfig);
+                    } else {
+                        restClient = Elastic8xRestClient.custom(processedEndPoints, clientConfig);
+                    }
+                }
             } else {
-                restClient = Elastic8xRestClient.custom(processedEndPoints, clientConfig);
+                // 非secure模式 / Non-secure mode
+                if (StringUtils.isNotBlank(userName) && StringUtils.isNotBlank(password)) {
+                    restClient = Elastic8xRestClient.custom(processedEndPoints, userName, password, clientConfig);
+                } else {
+                    restClient = Elastic8xRestClient.custom(processedEndPoints, clientConfig);
+                }
             }
 
             try {
@@ -154,7 +179,7 @@ public class Elastic8xWriter extends Writer {
                     }
 
                     // 创建索引（如果需要构建索引且允许自动创建）/ Create index (if need to build and allow auto create)
-                    if (needToBuildIndex && autoCreateIndex) {
+                    if (needToBuildIndex) {
                         restClient.createIndex(indexName, indexType, jobConf.getMap(Elastic8xKey.SETTINGS), props);
                     }
                 }

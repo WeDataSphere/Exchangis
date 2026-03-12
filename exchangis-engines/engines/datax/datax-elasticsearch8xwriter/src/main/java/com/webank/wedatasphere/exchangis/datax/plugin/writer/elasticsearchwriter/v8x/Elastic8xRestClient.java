@@ -205,6 +205,34 @@ public class Elastic8xRestClient implements AutoCloseable {
     }
 
     /**
+     * 工厂方法：创建SSL认证+用户名密码认证的客户端 / Factory method: create client with SSL auth and username/password
+     *
+     * @param endPoints ES节点地址数组 / ES endpoint addresses
+     * @param username 用户名 / Username
+     * @param password 密码 / Password
+     * @param keyStorePath 密钥库路径 / Keystore path
+     * @param keyStorePass 密钥库密码 / Keystore password
+     * @param clientConfig 客户端配置 / Client configuration
+     * @return Elastic8xRestClient实例 / Elastic8xRestClient instance
+     */
+    public static Elastic8xRestClient sslCustom(String[] endPoints, String username, String password,
+                                                String keyStorePath, String keyStorePass, Map<String, Object> clientConfig) {
+        try {
+            CredentialsProvider credentialsProvider = new BasicCredentialsProvider();
+            credentialsProvider.setCredentials(AuthScope.ANY,
+                    new UsernamePasswordCredentials(username, password));
+
+            SSLContext sslContext = buildSSLContext(keyStorePath, keyStorePass);
+            RestClientBuilder builder = createRestClientBuilder(endPoints, credentialsProvider, sslContext, clientConfig);
+            RestClient restClient = builder.build();
+            RestClientTransport transport = createTransport(restClient);
+            return new Elastic8xRestClient(restClient, transport, clientConfig);
+        } catch (Exception e) {
+            throw DataXException.asDataXException(Elastic8xWriterErrorCode.BAD_CONNECT, e);
+        }
+    }
+
+    /**
      * 检查索引是否存在 / Check if index exists
      *
      * @param indexName 索引名称 / Index name

@@ -170,4 +170,14 @@ public final class Elastic8xKey {
      * Index pattern end marker
      */
     static final String INDEX_PATTERN_END = "}";
+
+    /**
+     * keystore path (for SSL/TLS)
+     */
+    static final String KEYSTORE_PATH = "keystorePath";
+
+    /**
+     * keystore password (for SSL/TLS)
+     */
+    static final String KEYSTORE_PASSWORD = "keystorePassword";
 }
