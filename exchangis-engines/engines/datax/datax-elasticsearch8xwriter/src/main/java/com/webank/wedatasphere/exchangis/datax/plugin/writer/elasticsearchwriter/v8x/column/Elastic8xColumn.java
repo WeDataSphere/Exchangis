@@ -116,10 +116,24 @@ public class Elastic8xColumn {
      * @param record DataX Record对象
      * @param colConfs 字段配置列表
      * @param columnNameSeparator 嵌套字段分隔符
+     * @param dataFormat 日期格式化pattern
+     * @param allowIndexNotExist 是否允许索引不存在
      * @return ES8文档（Map结构）
      */
-    public static Map<String, Object> toData(Record record, List<Elastic8xColumn> colConfs, String columnNameSeparator) {
+    public static Map<String, Object> toData(Record record, List<Elastic8xColumn> colConfs,
+                                               String columnNameSeparator, String dataFormat,
+                                               Boolean allowIndexNotExist) {
         Map<String, Object> outputData = new HashMap<>(record.getColumnNumber());
+
+        // 根据dataFormat创建DateTimeFormatter
+        DateTimeFormatter dateTimeFormatter = null;
+        if (StringUtils.isNotBlank(dataFormat)) {
+            try {
+                dateTimeFormatter = DateTimeFormat.forPattern(dataFormat);
+            } catch (Exception e) {
+                LOG.warn("Invalid dataFormat pattern: {}, ignoring", dataFormat, e);
+            }
+        }
 
         for (int i = 0; i < record.getColumnNumber(); i++) {
             Column column = record.getColumn(i);
@@ -202,7 +216,7 @@ public class Elastic8xColumn {
 
                     case DATE_RANGE:
                     case DATE:
-                        value = parseDate(config, column);
+                        value = parseDate(config, column, dateTimeFormatter);
                         innerOutput.put(columnName, value);
                         break;
 
@@ -248,18 +262,30 @@ public class Elastic8xColumn {
     /**
      * 解析日期类型
      */
-    private static String parseDate(Elastic8xColumn config, Column column) {
+    private static String parseDate(Elastic8xColumn config, Column column, DateTimeFormatter dateTimeFormatter) {
         DateTimeZone dateTimeZone = DateTimeZone.getDefault();
         if (StringUtils.isNotBlank(config.getTimezone())) {
             dateTimeZone = DateTimeZone.forID(config.getTimezone());
         }
         String output;
         if (column.getType() == Column.Type.DATE) {
-            output = new DateTime(column.asLong(), dateTimeZone).toString();
+            DateTime dateTime = new DateTime(column.asLong(), dateTimeZone);
+            // 如果传入了dateTimeFormatter，使用print()格式化输出
+            if (dateTimeFormatter != null) {
+                output = dateTimeFormatter.print(dateTime);
+            } else {
+                output = dateTime.toString();
+            }
         } else if (StringUtils.isNotBlank(config.getFormat())) {
             DateTimeFormatter formatter = DateTimeFormat.forPattern(config.getFormat());
-            output = formatter.withZone(dateTimeZone)
-                    .parseDateTime(column.asString()).toString();
+            DateTime dateTime = formatter.withZone(dateTimeZone)
+                    .parseDateTime(column.asString());
+            // 如果传入了dateTimeFormatter，使用print()格式化输出
+            if (dateTimeFormatter != null) {
+                output = dateTimeFormatter.print(dateTime);
+            } else {
+                output = dateTime.toString();
+            }
         } else {
             output = column.asString();
         }
