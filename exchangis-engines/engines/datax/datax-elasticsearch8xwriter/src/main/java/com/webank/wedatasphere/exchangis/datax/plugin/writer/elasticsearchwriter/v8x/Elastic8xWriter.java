@@ -23,6 +23,7 @@ import co.elastic.clients.elasticsearch._types.ErrorCause;
 import co.elastic.clients.elasticsearch.core.BulkRequest;
 import co.elastic.clients.elasticsearch.core.BulkResponse;
 import co.elastic.clients.elasticsearch.core.bulk.BulkOperation;
+import co.elastic.clients.elasticsearch.core.bulk.BulkOperationVariant;
 import com.alibaba.datax.common.element.Record;
 import com.alibaba.datax.common.element.StringColumn;
 import com.alibaba.datax.common.exception.DataXException;
@@ -514,7 +515,6 @@ public class Elastic8xWriter extends Writer {
                                     .index(indexName)
                                     .document(data)
                             ), null);
-
                     count += 1;
                 }
 
@@ -531,11 +531,45 @@ public class Elastic8xWriter extends Writer {
 
         @Override
         public void startWrite(BasicDataReceiver<Object> receiver, Class<?> type) {
-            // ES8不支持DocWriteRequest模式,只支持Record模式
-            // ES8 doesn't support DocWriteRequest mode, only Record mode
-            // 调用父类默认实现 / Call parent class default implementation
-            LOG.warn("startWrite(BasicDataReceiver, Class) is not supported in ES8, calling super method");
-            super.startWrite(receiver, type);
+            // 支持BulkOperationVariant模式 / Support BulkOperationVariant mode
+            // ES8中使用BulkOperationVariant (对应ES6的DocWriteRequest)
+            // ES8 uses BulkOperationVariant (corresponds to ES6's DocWriteRequest)
+            if (BulkOperationVariant.class.isAssignableFrom(type)) {
+                LOG.info("Begin to write BulkOperationVariant to ElasticSearch / 开始向ElasticSearch写入BulkOperationVariant, index: {}", indexName);
+
+                BulkOperationVariant variant = null;
+                long count = 0;
+
+                try {
+                    while (null != (variant = (BulkOperationVariant) receiver.getFromReader())) {
+                        // 检查是否有bulk错误 / Check if bulk error occurred
+                        if (bulkError) {
+                            throw DataXException.asDataXException(Elastic8xWriterErrorCode.BULK_REQ_ERROR,
+                                    "Bulk operation failed / 批量操作失败");
+                        }
+
+                        // 使用BulkOperation包裹variant后添加到BulkIngester
+                        // Wrap variant with BulkOperation and add to BulkIngester
+                        BulkOperation bulkOperation = new BulkOperation(variant);
+                        bulkIngester.add(bulkOperation);
+
+                        count += 1;
+                    }
+
+                    // 记录写入数量 / Record write count
+                    getTaskPluginCollector().collectMessage(Job.WRITE_SIZE, String.valueOf(count));
+                    LOG.info("End to write BulkOperationVariant to ElasticSearch / 向ElasticSearch写入BulkOperationVariant结束, total: {}", count);
+
+                } catch (Exception e) {
+                    LOG.error("Failed to write BulkOperationVariant / 写入BulkOperationVariant失败", e);
+                    throw DataXException.asDataXException(Elastic8xWriterErrorCode.BULK_REQ_ERROR,
+                            "Failed to write BulkOperationVariant / 写入BulkOperationVariant失败", e);
+                }
+            } else {
+                // 不支持的类型，调用父类 / Unsupported type, call parent
+                LOG.warn("Unsupported type in startWrite(BasicDataReceiver, Class): {}, calling super method", type);
+                super.startWrite(receiver, type);
+            }
         }
 
         @Override
