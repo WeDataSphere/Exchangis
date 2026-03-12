@@ -155,4 +155,19 @@ public final class Elastic8xKey {
      * Field properties key (used in mapping)
      */
     static final String FIELD_PROPS = "properties";
+
+    /**
+     * secure (use https schema)
+     */
+    static final String SECURE = "secure";
+
+    /**
+     * Index pattern start marker
+     */
+    static final String INDEX_PATTERN_START = "{";
+
+    /**
+     * Index pattern end marker
+     */
+    static final String INDEX_PATTERN_END = "}";
 }

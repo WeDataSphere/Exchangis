@@ -72,14 +72,35 @@ public class Elastic8xWriter extends Writer {
 
         @Override
         public void prepare() {
+            // 获取secure配置,判断是否使用HTTPS / Get secure config to determine if using HTTPS
+            boolean secure = jobConf.getBool(Elastic8xKey.SECURE, false);
+
+            // 如果secure为true,将所有endPoint的schema变成https / If secure is true, change all endPoint schemas to https
+            String[] processedEndPoints = endPoints;
+            if (secure) {
+                processedEndPoints = new String[endPoints.length];
+                for (int i = 0; i < endPoints.length; i++) {
+                    String endPoint = endPoints[i].trim();
+                    // 替换http://为https:// / Replace http:// with https://
+                    if (endPoint.startsWith("http://")) {
+                        processedEndPoints[i] = "https://" + endPoint.substring(7);
+                    } else if (!endPoint.startsWith("https://")) {
+                        // 如果没有schema前缀,添加https:// / If no schema prefix, add https://
+                        processedEndPoints[i] = "https://" + endPoint;
+                    } else {
+                        processedEndPoints[i] = endPoint;
+                    }
+                }
+            }
+
             // 创建ES8客户端 / Create ES8 client
             Elastic8xRestClient restClient;
             Map<String, Object> clientConfig = jobConf.getMap(Elastic8xKey.CLIENT_CONFIG);
 
             if (StringUtils.isNotBlank(userName) && StringUtils.isNotBlank(password)) {
-                restClient = Elastic8xRestClient.custom(endPoints, userName, password, clientConfig);
+                restClient = Elastic8xRestClient.custom(processedEndPoints, userName, password, clientConfig);
             } else {
-                restClient = Elastic8xRestClient.custom(endPoints, clientConfig);
+                restClient = Elastic8xRestClient.custom(processedEndPoints, clientConfig);
             }
 
             try {
@@ -90,6 +111,23 @@ public class Elastic8xWriter extends Writer {
                 String columnNameSeparator = this.jobConf.getString(Elastic8xKey.COLUMN_NAME_SEPARATOR,
                         Elastic8xColumn.DEFAULT_NAME_SPLIT);
 
+                // 判断indexName是否包含pattern（同时包含"{"和"}"）/ Check if indexName has pattern (contains both "{" and "}")
+                boolean hasPattern = indexName.contains(Elastic8xKey.INDEX_PATTERN_START)
+                        && indexName.contains(Elastic8xKey.INDEX_PATTERN_END);
+
+                // 获取allowIndexNotExist配置（默认false）/ Get allowIndexNotExist config (default false)
+                boolean allowIndexNotExist = jobConf.getBool(Elastic8xKey.ALLOW_INDEX_NOT_EXIST, false);
+
+                // 获取autoCreateIndex配置（默认false）/ Get autoCreateIndex config (default false)
+                boolean autoCreateIndex = jobConf.getBool(Elastic8xKey.AUTO_CREATE_INDEX, false);
+
+                // 判断索引是否存在 / Check if index exists
+                boolean existsIndex = restClient.existIndices(indexName);
+
+                // 计算是否需要构建索引 / Calculate if need to build index
+                boolean needToBuildIndex = (jobConf.getBool(Elastic8xKey.CLEANUP, false) || !existsIndex)
+                        && !allowIndexNotExist;
+
                 // 解析字段配置 / Resolve column configuration
                 List<Object> rawColumnList = jobConf.getList(Elastic8xKey.PROPS_COLUMN);
                 List<Elastic8xColumn> resolvedColumnList = new ArrayList<>();
@@ -98,16 +136,22 @@ public class Elastic8xWriter extends Writer {
                         rawColumnList, resolvedColumnList, columnNameSeparator);
                 this.jobConf.set(Elastic8xKey.PROPS_COLUMN, resolvedColumnList);
 
-                // 清理已存在的索引 / Cleanup existing index if configured
-                if (jobConf.getBool(Elastic8xKey.CLEANUP, false) && restClient.existIndices(indexName)) {
-                    if (!restClient.deleteIndices(indexName)) {
-                        throw DataXException.asDataXException(Elastic8xWriterErrorCode.DELETE_INDEX_ERROR,
-                                "Failed to delete index / 删除索引失败: [" + indexName + "]");
+                // 只有在没有pattern的情况下才进行索引清理和创建 / Only cleanup and create index when no pattern
+                if (!hasPattern) {
+                    // 清理已存在的索引 / Cleanup existing index if configured
+                    boolean cleanup = jobConf.getBool(Elastic8xKey.CLEANUP, false);
+                    if (cleanup && existsIndex) {
+                        if (!restClient.deleteIndices(indexName)) {
+                            throw DataXException.asDataXException(Elastic8xWriterErrorCode.DELETE_INDEX_ERROR,
+                                    "Failed to delete index / 删除索引失败: [" + indexName + "]");
+                        }
+                    }
+
+                    // 创建索引（如果需要构建索引且允许自动创建）/ Create index (if need to build and allow auto create)
+                    if (needToBuildIndex && autoCreateIndex) {
+                        restClient.createIndex(indexName, indexType, jobConf.getMap(Elastic8xKey.SETTINGS), props);
                     }
                 }
-
-                // 如果索引不存在,创建索引 / Create index if not exists
-                restClient.createIndex(indexName, indexType, jobConf.getMap(Elastic8xKey.SETTINGS), props);
             } finally {
                 // 关闭客户端 / Close client
                 restClient.close();
