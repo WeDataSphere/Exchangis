@@ -320,13 +320,16 @@ public class Elastic8xRestClient implements AutoCloseable {
      * @param listener 监听器 / Listener
      * @param bulkActions 批量操作数量 / Bulk actions count
      * @param bulkPerTask 并发任务数 / Concurrent task count (ES8中自动管理,此参数保留但未使用)
+     * @param indexName 默认索引名称 / Default index name (设置到globalSettings中 / Set in globalSettings)
      * @return BulkIngester实例 / BulkIngester instance
      */
     @SuppressWarnings({"unchecked", "rawtypes"})
-    public <Context>BulkIngester<Context> createBulkIngester(BulkListener<Context> listener, int bulkActions, int bulkPerTask) {
+    public <Context>BulkIngester<Context> createBulkIngester(BulkListener<Context> listener, int bulkActions,
+                                                              int bulkPerTask, String indexName) {
         try {
             // 创建BulkIngester / Create BulkIngester
             // 使用ES8 Java Client的BulkIngester API / Use ES8 Java Client's BulkIngester API
+            // 在globalSettings中设置默认索引 / Set default index in globalSettings
             BulkIngester<Context> ingester = BulkIngester.of(b -> b
                     .client(this.esClient)
                     .maxOperations(bulkActions)
@@ -334,9 +337,11 @@ public class Elastic8xRestClient implements AutoCloseable {
                     .flushInterval(5, TimeUnit.SECONDS)
                     .backoffPolicy(BackoffPolicy.constantBackoff(DEFAULT_BACKOFF_DELAY_MILLS,
                             DEFAULT_BACKOFF_TIMES))
+                    .globalSettings(g -> g.index(indexName))  // 设置默认索引 / Set default index
                     .listener(listener)
             );
             this.bulkIngesters.add(ingester);
+            LOG.info("BulkIngester created with default index: {} / BulkIngester已创建,默认索引: {}", indexName);
             return ingester;
         } catch (Exception e) {
             throw DataXException.asDataXException(Elastic8xWriterErrorCode.BULK_REQ_ERROR,
@@ -530,6 +535,7 @@ public class Elastic8xRestClient implements AutoCloseable {
     private static SSLContext buildSSLContext(String keyStorePath, String keyStorePass) {
         try {
             KeyStore truststore = KeyStore.getInstance("jks");
+
             try (InputStream inputStream = Files.newInputStream(Paths.get(new URI(keyStorePath)))) {
                 truststore.load(inputStream, keyStorePass.toCharArray());
             } catch (URISyntaxException | IOException | NoSuchAlgorithmException |

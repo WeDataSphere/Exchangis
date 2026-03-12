@@ -23,7 +23,10 @@ import co.elastic.clients.elasticsearch._types.ErrorCause;
 import co.elastic.clients.elasticsearch.core.BulkRequest;
 import co.elastic.clients.elasticsearch.core.BulkResponse;
 import co.elastic.clients.elasticsearch.core.bulk.BulkOperation;
+import co.elastic.clients.elasticsearch.core.bulk.BulkOperationBase;
 import co.elastic.clients.elasticsearch.core.bulk.BulkOperationVariant;
+import co.elastic.clients.elasticsearch.core.bulk.IndexOperation;
+import co.elastic.clients.util.ObjectBuilder;
 import com.alibaba.datax.common.element.Record;
 import com.alibaba.datax.common.element.StringColumn;
 import com.alibaba.datax.common.exception.DataXException;
@@ -36,12 +39,15 @@ import com.alibaba.datax.core.statistics.plugin.task.util.DirtyRecord;
 import com.webank.wedatasphere.exchangis.datax.common.CryptoUtils;
 import com.webank.wedatasphere.exchangis.datax.plugin.writer.elasticsearchwriter.v8x.column.Elastic8xColumn;
 import com.webank.wedatasphere.exchangis.datax.plugin.writer.elasticsearchwriter.v8x.column.Elastic8xFieldDataType;
+import com.webank.wedatasphere.exchangis.datax.plugin.writer.elasticsearchwriter.v8x.index.IndexExtractor;
+import com.webank.wedatasphere.exchangis.datax.plugin.writer.elasticsearchwriter.v8x.index.IndexPatternExtractor;
 import com.webank.wedatasphere.exchangis.datax.util.Json;
 import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.*;
+import java.util.function.Function;
 
 /**
  * ES8 Writer插件 / ES8 Writer Plugin
@@ -146,8 +152,8 @@ public class Elastic8xWriter extends Writer {
                         Elastic8xColumn.DEFAULT_NAME_SPLIT);
 
                 // 判断indexName是否包含pattern（同时包含"{"和"}"）/ Check if indexName has pattern (contains both "{" and "}")
-                boolean hasPattern = indexName.contains(Elastic8xKey.INDEX_PATTERN_START)
-                        && indexName.contains(Elastic8xKey.INDEX_PATTERN_END);
+                boolean hasPattern = indexName.contains(Elastic8xKey.INDEX_PATTERN_START + "")
+                        && indexName.contains(Elastic8xKey.INDEX_PATTERN_END + "");
 
                 // 获取allowIndexNotExist配置（默认false）/ Get allowIndexNotExist config (default false)
                 boolean allowIndexNotExist = jobConf.getBool(Elastic8xKey.ALLOW_INDEX_NOT_EXIST, false);
@@ -403,6 +409,22 @@ public class Elastic8xWriter extends Writer {
         private String dateFormat;
         private boolean allowIndexNotExist;
 
+        /**
+         * 索引提取器（支持动态索引模式）/ Index extractor (supports dynamic index pattern)
+         * 用于从文档数据中提取动态索引名称 / Used to extract dynamic index name from document data
+         * 示例: logs-{date} => logs-2024-03-13 / Example: logs-{date} => logs-2024-03-13
+         * 如果为null则使用静态索引名 / If null, use static index name
+         */
+        private IndexExtractor indexExtractor;
+
+        /**
+         * 文档ID生成器 / Document ID generator
+         * 从文档的一个或多个字段值组合生成ES文档ID / Generate ES document ID from one or more field values
+         * 示例: idField="userId,orderId" => userId + orderId作为文档ID
+         * Example: idField="userId,orderId" => userId + orderId as document ID
+         * 默认返回null，由ES自动生成文档ID / Default returns null, let ES auto-generate document ID
+         */
+        private Function<Map<String, Object>, String> idGenerator = data -> null;
         @Override
         public void init() {
             // 初始化配置 / Initialize configuration
@@ -411,6 +433,54 @@ public class Elastic8xWriter extends Writer {
             // 获取基本配置 / Get basic configuration
             indexName = this.taskConf.getString(Elastic8xKey.INDEX_NAME);
             typeName = this.taskConf.getString(Elastic8xKey.INDEX_TYPE, "");
+
+            // 初始化索引提取器（支持动态索引模式）/ Initialize index extractor (supports dynamic index pattern)
+            // 示例: logs-{date} 会从每条记录的date字段提取值作为索引名的一部分
+            // Example: logs-{date} extracts value from date field of each record as part of index name
+            if (indexName.contains(Elastic8xKey.INDEX_PATTERN_START + "") &&
+                    indexName.contains(Elastic8xKey.INDEX_PATTERN_END + "")){
+                indexExtractor = new IndexPatternExtractor(indexName);
+                LOG.info("Index pattern detected / 检测到索引模式, pattern: {}, using IndexPatternExtractor / 使用IndexPatternExtractor", indexName);
+            } else {
+                LOG.info("Using static index name / 使用静态索引名: {}", indexName);
+            }
+
+            // 初始化文档ID生成器 / Initialize document ID generator
+            // 支持从多个字段组合生成文档ID / Supports combining multiple fields to generate document ID
+            // 示例: idField=id1,id2 会从每条记录的id1和id2字段值拼接生成文档ID
+            // Example: idField=id1,id2 concatenates id1 and id2 field values to generate document ID
+            String idField = this.taskConf.getString(Elastic8xKey.INDEX_ID_FIELD);
+            if (StringUtils.isNotBlank(idField)){
+                String[] idFields = idField.split(",");
+                // 清理空字段 / Clean empty fields
+                for (int i = 0; i < idFields.length; i++){
+                    if (null == idFields[i]){
+                        idFields[i] = "";
+                    }
+                }
+                if (idFields.length > 0){
+                    final String[] finalIdFields = idFields;
+                    idGenerator = data -> {
+                        StringBuilder builder = new StringBuilder();
+                        for (String field : finalIdFields){
+                            Object idValue = data.get(field);
+                            if (null != idValue){
+                                builder.append(idValue);
+                            }
+                        }
+                        String generatedId = builder.toString();
+                        if (LOG.isDebugEnabled()){
+                            LOG.debug("Generated document ID / 生成文档ID: {} from fields: {} / 从字段",
+                                    generatedId, String.join(",", finalIdFields));
+                        }
+                        return generatedId;
+                    };
+                    LOG.info("Document ID generator initialized / 文档ID生成器已初始化, idField: {}, fields: {}",
+                            idField, String.join(",", idFields));
+                }
+            } else {
+                LOG.info("No document ID field configured / 未配置文档ID字段, using ES auto-generated ID / 使用ES自动生成的ID");
+            }
             columnNameSeparator = this.taskConf.getString(Elastic8xKey.COLUMN_NAME_SEPARATOR,
                     Elastic8xColumn.DEFAULT_NAME_SPLIT);
             batchSize = this.taskConf.getInt(Elastic8xKey.BULK_ACTIONS, 1000);
@@ -482,9 +552,9 @@ public class Elastic8xWriter extends Writer {
                 }
             }
 
-            // 创建BulkIngester / Create BulkIngester
+            // 创建BulkIngester，传入indexName作为默认索引 / Create BulkIngester with indexName as default index
             this.bulkIngester = restClient.createBulkIngester(
-                    buildBulkListener(getTaskPluginCollector()), batchSize, bulkPerTask);
+                    buildBulkListener(getTaskPluginCollector()), batchSize, bulkPerTask, indexName);
 
             LOG.info("Elastic8x Writer Task initialized / Elastic8x Writer Task初始化成功, index: {}", indexName);
         }
@@ -508,16 +578,39 @@ public class Elastic8xWriter extends Writer {
                     Map<String, Object> data = Elastic8xColumn.toData(record, columns, columnNameSeparator,
                             dateFormat, allowIndexNotExist);
 
-                    // 添加到BulkIngester / Add to BulkIngester
+                    // 计算目标索引名称（支持动态索引模式）/ Calculate target index name (supports dynamic index pattern)
+                    // 如果配置了indexExtractor（如logs-{date}），从文档数据中提取实际索引名
+                    // If indexExtractor is configured (e.g., logs-{date}), extract actual index name from document data
+                    String targetIndex = indexName;
+                    if (null != indexExtractor){
+                        targetIndex = indexExtractor.extractIndex(data);
+                        if (LOG.isTraceEnabled()){
+                            LOG.trace("Extracted dynamic index name / 提取动态索引名: {} from pattern: {} / 从模式",
+                                    targetIndex, indexName);
+                        }
+                    }
+
+                    // 构建索引操作 / Build index operation
                     // 使用BulkOperation.Builder构建索引操作 / Use BulkOperation.Builder to build index operation
+                    IndexOperation.Builder<Object> builder =
+                            new IndexOperation.Builder<>()
+                                    .index(targetIndex).document(data);
+
+                    // 生成文档ID（如果配置了idField）/ Generate document ID (if idField is configured)
+                    String id = idGenerator.apply(data);
+                    if (StringUtils.isNotBlank(id)){
+                        builder.id(id);
+                        if (LOG.isTraceEnabled()){
+                            LOG.trace("Set document ID / 设置文档ID: {} for index: {} / 为索引", id, targetIndex);
+                        }
+                    }
+
+                    // 添加到BulkIngester / Add to BulkIngester
                     bulkIngester.add(bulkOperationBuilder -> bulkOperationBuilder
-                            .index(idx -> idx
-                                    .index(indexName)
-                                    .document(data)
-                            ), null);
+                            .index(builder.build()), null);
                     count += 1;
                 }
-
+                bulkIngester.close();
                 // 记录写入数量 / Record write count
                 getTaskPluginCollector().collectMessage(Job.WRITE_SIZE, String.valueOf(count));
                 LOG.info("End to write record to ElasticSearch / 向ElasticSearch写入记录结束, total: {}", count);
@@ -547,7 +640,13 @@ public class Elastic8xWriter extends Writer {
                             throw DataXException.asDataXException(Elastic8xWriterErrorCode.BULK_REQ_ERROR,
                                     "Bulk operation failed / 批量操作失败");
                         }
-
+                        if (variant instanceof BulkOperationBase){
+                            String index = ((BulkOperationBase)variant).index();
+                            if (StringUtils.isBlank(index) && null != indexExtractor){
+                                throw DataXException.asDataXException(Elastic8xWriterErrorCode.BULK_REQ_ERROR,
+                                        "Incompatible between post processor and index [" + indexExtractor + "] with dynamic pattern");
+                            }
+                        }
                         // 使用BulkOperation包裹variant后添加到BulkIngester
                         // Wrap variant with BulkOperation and add to BulkIngester
                         BulkOperation bulkOperation = new BulkOperation(variant);
@@ -555,7 +654,7 @@ public class Elastic8xWriter extends Writer {
 
                         count += 1;
                     }
-
+                    bulkIngester.close();
                     // 记录写入数量 / Record write count
                     getTaskPluginCollector().collectMessage(Job.WRITE_SIZE, String.valueOf(count));
                     LOG.info("End to write BulkOperationVariant to ElasticSearch / 向ElasticSearch写入BulkOperationVariant结束, total: {}", count);
