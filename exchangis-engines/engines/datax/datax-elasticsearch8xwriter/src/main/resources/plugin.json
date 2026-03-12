@@ -1,0 +1,6 @@
+{
+  "name": "elasticsearch8xwriter",
+  "class": "com.webank.wedatasphere.exchangis.datax.plugin.writer.elasticsearchwriter.v8x.Elastic8xWriter",
+  "description": "Elasticsearch 8.x writer plugin",
+  "developer": "webank"
+}
