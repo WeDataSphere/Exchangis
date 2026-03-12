@@ -128,12 +128,18 @@ public class Elastic8xWriter extends Writer {
                 boolean needToBuildIndex = (jobConf.getBool(Elastic8xKey.CLEANUP, false) || !existsIndex)
                         && !allowIndexNotExist;
 
+                // 如果需要构建索引但autoCreateIndex不为true,抛出异常 / If need to build index but autoCreateIndex is not true, throw exception
+                if (needToBuildIndex && !autoCreateIndex) {
+                    throw DataXException.asDataXException(Elastic8xWriterErrorCode.CONFIG_ERROR,
+                            "Index needs to be built but autoCreateIndex is false / 索引需要构建但autoCreateIndex为false, index: [" + indexName + "]");
+                }
+
                 // 解析字段配置 / Resolve column configuration
                 List<Object> rawColumnList = jobConf.getList(Elastic8xKey.PROPS_COLUMN);
                 List<Elastic8xColumn> resolvedColumnList = new ArrayList<>();
 
                 Map<Object, Object> props = resolveColumn(restClient, indexName, indexType,
-                        rawColumnList, resolvedColumnList, columnNameSeparator);
+                        rawColumnList, resolvedColumnList, columnNameSeparator, hasPattern, needToBuildIndex);
                 this.jobConf.set(Elastic8xKey.PROPS_COLUMN, resolvedColumnList);
 
                 // 只有在没有pattern的情况下才进行索引清理和创建 / Only cleanup and create index when no pattern
@@ -213,12 +219,14 @@ public class Elastic8xWriter extends Writer {
          * @param rawColumnList 原始字段列表 / Raw column list
          * @param outputColumn 输出字段列表 / Output column list
          * @param columnNameSeparator 字段分隔符 / Column separator
+         * @param hasPattern 索引名是否包含pattern / Whether index name has pattern
+         * @param needToBuildIndex 是否需要构建索引 / Whether need to build index
          * @return 字段属性Map / Field properties map
          */
         private Map<Object, Object> resolveColumn(Elastic8xRestClient client,
                                                    String index, String type,
                                                    List<Object> rawColumnList, List<Elastic8xColumn> outputColumn,
-                                                   String columnNameSeparator) {
+                                                   String columnNameSeparator, boolean hasPattern, boolean needToBuildIndex) {
             Map<Object, Object> properties;
 
             if (null != rawColumnList && !rawColumnList.isEmpty()) {
@@ -228,11 +236,16 @@ public class Elastic8xWriter extends Writer {
                     String raw = Json.toJson(columnRaw, Map.class);
                     Elastic8xColumn column = Json.fromJson(raw, Elastic8xColumn.class);
 
-                    if (StringUtils.isNotBlank(column.getName()) && StringUtils.isNotBlank(column.getType())) {
+                    // 对于用户自定义字段,column.getType()可能为空,这里不判断type是否为空
+                    // For user-defined columns, column.getType() may be null, don't check if type is blank here
+                    if (StringUtils.isNotBlank(column.getName())) {
                         outputColumn.add(column);
 
-                        // 排除_id字段和ALIAS类型 / Exclude _id field and ALIAS type
+                        // 排除_id字段和ALIAS类型,加入properties需同时满足needToBuildIndex和column.getType()不为空
+                        // Exclude _id field and ALIAS type, add to properties only when needToBuildIndex and column.getType() is not blank
                         if (!column.getName().equals(DEFAULT_ID)
+                                && StringUtils.isNotBlank(column.getType())
+                                && needToBuildIndex
                                 && Elastic8xFieldDataType.valueOf(column.getType().toUpperCase())
                                 != Elastic8xFieldDataType.ALIAS) {
                             Map property = Json.fromJson(raw, Map.class);
@@ -243,9 +256,11 @@ public class Elastic8xWriter extends Writer {
                 });
             } else {
                 // 从已存在的索引获取字段 / Get columns from existing index
-                if (!client.existIndices(index)) {
+                // 抛出异常的条件: hasPattern || !client.existIndices(index)
+                // Throw exception when: hasPattern || !client.existIndices(index)
+                if (hasPattern || !client.existIndices(index)) {
                     throw DataXException.asDataXException(Elastic8xWriterErrorCode.INDEX_NOT_EXIST,
-                            "Index does not exist, cannot get columns / 索引不存在,无法获取字段: [" + index + "]");
+                            "Cannot get columns from index (hasPattern or not exists) / 无法从索引获取字段(包含pattern或不存在): [" + index + "]");
                 }
 
                 // 从索引获取properties / Get properties from index
