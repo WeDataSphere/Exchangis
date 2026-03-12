@@ -67,6 +67,10 @@ public enum Elastic8xFieldDataType {
      */
     SCALED_FLOAT,
     /**
+     * type:alias, alternate name for a field
+     */
+    ALIAS,
+    /**
      * type:binary
      */
     BINARY,
@@ -79,6 +83,22 @@ public enum Elastic8xFieldDataType {
      */
     DATE,
     /**
+     * type:geo_point
+     */
+    GEO_POINT,
+    /**
+     * type:geo_shape
+     */
+    GEO_SHAPE,
+    /**
+     * type:integer_range, 32-bits
+     */
+    INTEGER_RANGE,
+    /**
+     * type:ip
+     */
+    IP,
+    /**
      * type:keyword
      */
     KEYWORD,
@@ -86,6 +106,26 @@ public enum Elastic8xFieldDataType {
      * type:nested
      */
     NESTED,
+    /**
+     * type:float_range, 32-bits IEEE 754
+     */
+    FLOAT_RANGE,
+    /**
+     * type:long_range, 64-bits
+     */
+    LONG_RANGE,
+    /**
+     * type:double_range, 64-bits IEEE 754
+     */
+    DOUBLE_RANGE,
+    /**
+     * type:date_range, unsigned 64-bit integer milliseconds
+     */
+    DATE_RANGE,
+    /**
+     * type:ip_range, IPv4 or IPv6
+     */
+    IP_RANGE,
     /**
      * type:dense_vector (ES8新特性)
      */

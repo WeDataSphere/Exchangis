@@ -1,0 +1,299 @@
+/*
+ *
+ *  Copyright 2020 WeBank
+ *
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
+ *
+ *  http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
+ */
+
+package com.webank.wedatasphere.exchangis.datax.plugin.writer.elasticsearchwriter.v8x.column;
+
+import com.alibaba.datax.common.element.Column;
+import com.alibaba.datax.common.element.Record;
+import com.alibaba.datax.common.exception.DataXException;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.webank.wedatasphere.exchangis.datax.plugin.writer.elasticsearchwriter.v8x.Elastic8xKey;
+import com.webank.wedatasphere.exchangis.datax.plugin.writer.elasticsearchwriter.v8x.Elastic8xWriterErrorCode;
+import com.webank.wedatasphere.exchangis.datax.util.Json;
+import org.apache.commons.lang3.StringUtils;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.text.SimpleDateFormat;
+import java.util.Date;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+
+/**
+ * Elastic8x字段映射配置类
+ *
+ * 参考ES6的ElasticColumn设计，提供静态方法toData处理Record到ES8文档的转换
+ *
+ * 核心职责：
+ * 1. 定义字段映射配置（name、type、format、timezone、dims）
+ * 2. 提供静态方法toData，将Record转换为ES8文档
+ * 3. 处理各种ES8数据类型（包括vector向量类型）
+ *
+ * @author davidhua
+ * 2019/8/15
+ */
+public class Elastic8xColumn {
+
+    private static final Logger LOG = LoggerFactory.getLogger(Elastic8xColumn.class);
+
+    private static final String ARRAY_SUFFIX = "]";
+    private static final String ARRAY_PREFIX = "[";
+
+    public static final String DEFAULT_NAME_SPLIT = "\\.";
+
+    private String name;
+
+    private String type;
+
+    private String format;
+
+    private String timezone;
+
+    private Integer dims; // 向量维度（仅dense_vector类型使用）
+
+    public String getName() {
+        return name;
+    }
+
+    public void setName(String name) {
+        this.name = name;
+    }
+
+    public String getType() {
+        return type;
+    }
+
+    public void setType(String type) {
+        this.type = type;
+    }
+
+    public String getFormat() {
+        return format;
+    }
+
+    public void setFormat(String format) {
+        this.format = format;
+    }
+
+    public String getTimezone() {
+        return timezone;
+    }
+
+    public void setTimezone(String timezone) {
+        this.timezone = timezone;
+    }
+
+    public Integer getDims() {
+        return dims;
+    }
+
+    public void setDims(Integer dims) {
+        this.dims = dims;
+    }
+
+    /**
+     * 将Record转换为ES8文档（Map结构）
+     *
+     * 参考ES6的ElasticColumn.toData方法设计
+     *
+     * @param record DataX Record对象
+     * @param colConfs 字段配置列表
+     * @param columnNameSeparator 嵌套字段分隔符
+     * @return ES8文档（Map结构）
+     */
+    public static Map<String, Object> toData(Record record, List<Elastic8xColumn> colConfs, String columnNameSeparator) {
+        Map<String, Object> outputData = new HashMap<>(record.getColumnNumber());
+
+        for (int i = 0; i < record.getColumnNumber(); i++) {
+            Column column = record.getColumn(i);
+            Elastic8xColumn config = colConfs.get(i);
+            String columnName = config.getName();
+
+            // 处理嵌套对象
+            Map<String, Object> innerOutput = outputData;
+            String[] levelColumns = columnName.split(columnNameSeparator);
+            if (levelColumns.length > 1) {
+                columnName = levelColumns[levelColumns.length - 1];
+                for (int j = 0; j < levelColumns.length - 1; j++) {
+                    Map<String, Object> data = new HashMap<>();
+                    innerOutput.put(levelColumns[j], data);
+                    innerOutput = data;
+                }
+            }
+
+            // 根据类型转换字段值
+            Elastic8xFieldDataType dataType;
+            try {
+                dataType = Elastic8xFieldDataType.valueOf(config.getType().toUpperCase());
+            } catch (IllegalArgumentException e) {
+                LOG.warn("Unknown type: {}, using TEXT as default", config.getType());
+                dataType = Elastic8xFieldDataType.TEXT;
+            }
+
+            Object value;
+            try {
+                switch (dataType) {
+                    case IP:
+                    case IP_RANGE:
+                    case KEYWORD:
+                    case TEXT:
+                        value = column.asString();
+                        innerOutput.put(columnName, value);
+                        break;
+
+                    case GEO_POINT:
+                    case GEO_SHAPE:
+                    case NESTED:
+                    case OBJECT:
+                        value = parseObject(column.asString());
+                        innerOutput.put(columnName, value);
+                        break;
+
+                    case LONG_RANGE:
+                    case LONG:
+                        value = column.asLong();
+                        innerOutput.put(columnName, value);
+                        break;
+
+                    case INTEGER:
+                    case INTEGER_RANGE:
+                    case SHORT:
+                        value = column.asBigInteger();
+                        innerOutput.put(columnName, value);
+                        break;
+
+                    case FLOAT:
+                    case FLOAT_RANGE:
+                    case HALF_FLOAT:
+                    case SCALED_FLOAT:
+                    case DOUBLE_RANGE:
+                    case DOUBLE:
+                        value = column.asDouble();
+                        innerOutput.put(columnName, value);
+                        break;
+
+                    case BINARY:
+                    case BYTE:
+                        value = column.asBytes();
+                        innerOutput.put(columnName, value);
+                        break;
+
+                    case BOOLEAN:
+                        value = column.asBoolean();
+                        innerOutput.put(columnName, value);
+                        break;
+
+                    case DATE_RANGE:
+                    case DATE:
+                        value = parseDate(config, column);
+                        innerOutput.put(columnName, value);
+                        break;
+
+                    case DENSE_VECTOR:
+                        value = parseVector(column);
+                        innerOutput.put(columnName, value);
+                        break;
+
+                    case ALIAS:
+                        // ALIAS is a metadata field, treat as string
+                        value = column.asString();
+                        innerOutput.put(columnName, value);
+                        break;
+
+                    default:
+                        throw DataXException.asDataXException(Elastic8xWriterErrorCode.MAPPING_TYPE_UNSUPPORTED,
+                                "unsupported type:[" + config.getType() + "]");
+                }
+            } catch (Exception e) {
+                throw DataXException.asDataXException(Elastic8xWriterErrorCode.MAPPING_TYPE_UNSUPPORTED,
+                        "Failed to convert column: " + columnName + ", type: " + config.getType() + ", value: " + column.asString(), e);
+            }
+        }
+
+        return outputData;
+    }
+
+    /**
+     * 解析对象类型（OBJECT/NESTED）
+     */
+    private static Object parseObject(String rawData) {
+        try {
+            ObjectMapper mapper = new ObjectMapper();
+            if (rawData.startsWith(ARRAY_PREFIX) && rawData.endsWith(ARRAY_SUFFIX)) {
+                return mapper.readValue(rawData, Object.class);
+            }
+            return mapper.readValue(rawData, Map.class);
+        } catch (Exception e) {
+            LOG.warn("Failed to parse object: {}, returning raw string", rawData, e);
+            return rawData;
+        }
+    }
+
+    /**
+     * 解析日期类型
+     */
+    private static String parseDate(Elastic8xColumn config, Column column) {
+        String output;
+        if (column.getType() == Column.Type.DATE) {
+            // DataX Column类型为DATE，直接转换为ISO 8601格式
+            SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'");
+            output = sdf.format(new Date(column.asLong()));
+        } else if (StringUtils.isNotBlank(config.getFormat())) {
+            // 使用配置的日期格式解析
+            SimpleDateFormat sdf = new SimpleDateFormat(config.getFormat());
+            try {
+                Date date = sdf.parse(column.asString());
+                SimpleDateFormat outputSdf = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'");
+                output = outputSdf.format(date);
+            } catch (Exception e) {
+                LOG.warn("Failed to parse date with format: {}, using raw string", config.getFormat(), e);
+                output = column.asString();
+            }
+        } else {
+            output = column.asString();
+        }
+        return output;
+    }
+
+    /**
+     * 解析向量类型（DENSE_VECTOR）
+     * 支持格式：JSON数组字符串，如"[0.1, 0.2, 0.3]"
+     */
+    private static double[] parseVector(Column column) {
+        try {
+            ObjectMapper objectMapper = new ObjectMapper();
+
+            // 解析JSON数组字符串
+            String rawData = column.asString();
+            JsonNode jsonNode = objectMapper.readTree(rawData);
+            if (jsonNode.isArray()) {
+                double[] vector = new double[jsonNode.size()];
+                for (int i = 0; i < jsonNode.size(); i++) {
+                    vector[i] = jsonNode.get(i).asDouble();
+                }
+                return vector;
+            } else {
+                throw new IllegalArgumentException("Vector data must be an array");
+            }
+        } catch (Exception e) {
+            throw DataXException.asDataXException(Elastic8xWriterErrorCode.VECTOR_PARSE_ERROR,
+                    "Failed to parse vector: " + column.asString(), e);
+        }
+    }
+}

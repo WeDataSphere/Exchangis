@@ -42,6 +42,7 @@
         <module>datax-textfilereader</module>
         <module>datax-textfilewriter</module>
         <module>datax-elasticsearchwriter</module>
+        <module>datax-elasticsearch8xwriter</module>
         <module>datax-mysqlreader</module>
         <module>datax-mysqlwriter</module>
         <module>datax-oraclereader</module>
