@@ -140,4 +140,14 @@ public final class Elastic8xKey {
      * max_errors
      */
     static final String MAX_ERRORS = "maxErrors";
+
+    /**
+     * Alias for CLIENT_CONFIG_TIMEOUT_MS (using CLIENT_CONFIG_REQ_TIMEOUT)
+     */
+    static final String CLIENT_CONFIG_TIMEOUT_MS = CLIENT_CONFIG_REQ_TIMEOUT;
+
+    /**
+     * Alias for CLIENT_CONFIG_CONN_TIMEOUT_MS (using CLIENT_CONFIG_CONN_TIMEOUT)
+     */
+    static final String CLIENT_CONFIG_CONN_TIMEOUT_MS = CLIENT_CONFIG_CONN_TIMEOUT;
 }
