@@ -17,13 +17,21 @@
 
 package com.webank.wedatasphere.exchangis.datax.plugin.writer.elasticsearchwriter.v8x;
 
+import co.elastic.clients.elasticsearch._helpers.bulk.BulkIngester;
+import co.elastic.clients.elasticsearch._helpers.bulk.BulkListener;
+import co.elastic.clients.elasticsearch._types.ErrorCause;
+import co.elastic.clients.elasticsearch.core.BulkRequest;
+import co.elastic.clients.elasticsearch.core.BulkResponse;
+import co.elastic.clients.elasticsearch.core.bulk.BulkOperation;
 import com.alibaba.datax.common.element.Record;
+import com.alibaba.datax.common.element.StringColumn;
 import com.alibaba.datax.common.exception.DataXException;
 import com.alibaba.datax.common.plugin.BasicDataReceiver;
 import com.alibaba.datax.common.plugin.RecordReceiver;
 import com.alibaba.datax.common.plugin.TaskPluginCollector;
 import com.alibaba.datax.common.spi.Writer;
 import com.alibaba.datax.common.util.Configuration;
+import com.alibaba.datax.core.statistics.plugin.task.util.DirtyRecord;
 import com.webank.wedatasphere.exchangis.datax.common.CryptoUtils;
 import com.webank.wedatasphere.exchangis.datax.plugin.writer.elasticsearchwriter.v8x.column.Elastic8xColumn;
 import com.webank.wedatasphere.exchangis.datax.plugin.writer.elasticsearchwriter.v8x.column.Elastic8xFieldDataType;
@@ -360,33 +368,251 @@ public class Elastic8xWriter extends Writer {
     }
 
     /**
-     * Task类将在下一层实现 / Task class will be implemented in next layer
+     * Task类 - 数据写入核心逻辑 / Task class - Core data writing logic
+     *
+     * 核心职责 / Core responsibilities:
+     * - 初始化ES8客户端和BulkIngester / Initialize ES8 client and BulkIngester
+     * - 从RecordReceiver读取数据 / Read data from RecordReceiver
+     * - 转换数据为ES8文档格式 / Convert data to ES8 document format
+     * - 批量写入ES8 / Bulk write to ES8
+     * - 处理写入错误和脏数据 / Handle write errors and dirty data
      */
     public static class Task extends Writer.Task {
         private static final Logger LOG = LoggerFactory.getLogger(Task.class);
 
-        // Task类的实现将在第6层完成 / Task implementation will be completed in layer 6
-        // TODO: 第6层实现 / Layer 6 implementation
+        static final String DEFAULT_ENDPOINT_SPLIT = ",";
+
+        private volatile boolean bulkError;
+        private Configuration taskConf;
+        private String indexName;
+        private String typeName;
+        private String columnNameSeparator = Elastic8xColumn.DEFAULT_NAME_SPLIT;
+        private List<Elastic8xColumn> columns;
+        private Elastic8xRestClient restClient;
+        private BulkIngester<Object> bulkIngester;
+
+        // 配置项 / Configuration items
+        private int batchSize;
+        private int bulkPerTask;
+        private boolean secure;
+        private String userName;
+        private String password;
+        private String keyStorePath;
+        private String keyStorePassword;
+        private String dataFormat;
+        private boolean allowIndexNotExist;
+        private long maxErrors;
+        private long errorCount = 0;
 
         @Override
         public void init() {
-            // TODO: 第6层实现 / Layer 6 implementation
             // 初始化配置 / Initialize configuration
-            // 此方法将在第6层完整实现 / This method will be fully implemented in layer 6
+            this.taskConf = super.getPluginJobConf();
+
+            // 获取基本配置 / Get basic configuration
+            indexName = this.taskConf.getString(Elastic8xKey.INDEX_NAME);
+            typeName = this.taskConf.getString(Elastic8xKey.INDEX_TYPE, "");
+            columnNameSeparator = this.taskConf.getString(Elastic8xKey.COLUMN_NAME_SEPARATOR,
+                    Elastic8xColumn.DEFAULT_NAME_SPLIT);
+            batchSize = this.taskConf.getInt(Elastic8xKey.BULK_ACTIONS, 1000);
+            bulkPerTask = this.taskConf.getInt(Elastic8xKey.BULK_PER_TASK, 1);
+
+            // 获取字段配置 / Get column configuration
+            String columnsJson = this.taskConf.getString(Elastic8xKey.PROPS_COLUMN);
+            if (StringUtils.isNotBlank(columnsJson)) {
+                columns = Json.fromJson(columnsJson, List.class, Elastic8xColumn.class);
+            } else {
+                columns = new ArrayList<>();
+            }
+
+            // 获取认证信息 / Get authentication information
+            userName = this.taskConf.getString(Elastic8xKey.USERNAME, "");
+            password = this.taskConf.getString(Elastic8xKey.PASSWORD, "");
+            if (StringUtils.isNotBlank(password)) {
+                try {
+                    password = (String) CryptoUtils.string2Object(password);
+                } catch (Exception e) {
+                    throw DataXException.asDataXException(Elastic8xWriterErrorCode.CONFIG_ERROR,
+                            "Failed to decrypt password / 解密密码失败", e);
+                }
+            }
+
+            // 获取SSL配置 / Get SSL configuration
+            secure = this.taskConf.getBool(Elastic8xKey.SECURE, false);
+            keyStorePath = this.taskConf.getString(Elastic8xKey.KEYSTORE_PATH, "");
+            keyStorePassword = this.taskConf.getString(Elastic8xKey.KEYSTORE_PASSWORD, "");
+
+            // 获取其他配置 / Get other configuration
+            dataFormat = this.taskConf.getString("dataFormat", "");
+            allowIndexNotExist = this.taskConf.getBool(Elastic8xKey.ALLOW_INDEX_NOT_EXIST, false);
+            maxErrors = this.taskConf.getLong(Elastic8xKey.MAX_ERRORS, 0L);
+
+            // 获取endPoints并处理HTTPS / Get endPoints and process HTTPS
+            String[] endPoints = this.taskConf.getString(Elastic8xKey.ENDPOINTS).split(DEFAULT_ENDPOINT_SPLIT);
+            String[] processedEndPoints = endPoints;
+            if (secure) {
+                processedEndPoints = new String[endPoints.length];
+                for (int i = 0; i < endPoints.length; i++) {
+                    String endPoint = endPoints[i].trim();
+                    if (endPoint.startsWith("http://")) {
+                        processedEndPoints[i] = "https://" + endPoint.substring(7);
+                    } else if (!endPoint.startsWith("https://")) {
+                        processedEndPoints[i] = "https://" + endPoint;
+                    } else {
+                        processedEndPoints[i] = endPoint;
+                    }
+                }
+            }
+
+            // 创建ES8客户端 / Create ES8 client
+            Map<String, Object> clientConfig = this.taskConf.getMap(Elastic8xKey.CLIENT_CONFIG);
+            if (secure && StringUtils.isNotBlank(keyStorePath)) {
+                // SSL with keystore / 使用keystore的SSL
+                if (StringUtils.isNotBlank(userName) && StringUtils.isNotBlank(password)) {
+                    restClient = Elastic8xRestClient.sslCustom(processedEndPoints, userName, password,
+                            keyStorePath, keyStorePassword, clientConfig);
+                } else {
+                    restClient = Elastic8xRestClient.sslCustom(processedEndPoints, keyStorePath,
+                            keyStorePassword, clientConfig);
+                }
+            } else {
+                // Non-SSL or SSL without keystore / 非SSL或无keystore的SSL
+                if (StringUtils.isNotBlank(userName) && StringUtils.isNotBlank(password)) {
+                    restClient = Elastic8xRestClient.custom(processedEndPoints, userName, password, clientConfig);
+                } else {
+                    restClient = Elastic8xRestClient.custom(processedEndPoints, clientConfig);
+                }
+            }
+
+            // 创建BulkIngester / Create BulkIngester
+            this.bulkIngester = restClient.createBulkIngester(
+                    buildBulkListener(getTaskPluginCollector()), batchSize, bulkPerTask);
+
+            LOG.info("Elastic8x Writer Task initialized / Elastic8x Writer Task初始化成功, index: {}", indexName);
         }
 
         @Override
         public void startWrite(RecordReceiver recordReceiver) {
-            // TODO: 第6层实现 / Layer 6 implementation
-            // 此方法将在第6层完整实现 / This method will be fully implemented in layer 6
-            throw new UnsupportedOperationException("Task.startWrite() will be implemented in layer 6");
+            LOG.info("Begin to write record to ElasticSearch / 开始向ElasticSearch写入记录, index: {}", indexName);
+
+            Record record = null;
+            long count = 0;
+
+            try {
+                while (null != (record = recordReceiver.getFromReader())) {
+                    // 检查是否有bulk错误 / Check if bulk error occurred
+                    if (bulkError) {
+                        throw DataXException.asDataXException(Elastic8xWriterErrorCode.BULK_REQ_ERROR,
+                                "Bulk operation failed / 批量操作失败");
+                    }
+
+                    // 转换Record为ES8文档 / Convert Record to ES8 document
+                    Map<String, Object> data = Elastic8xColumn.toData(record, columns, columnNameSeparator,
+                            dataFormat, allowIndexNotExist);
+
+                    // 添加到BulkIngester / Add to BulkIngester
+                    // 使用BulkOperation.Builder构建索引操作 / Use BulkOperation.Builder to build index operation
+                    bulkIngester.add(bulkOperationBuilder -> bulkOperationBuilder
+                            .index(idx -> idx
+                                    .index(indexName)
+                                    .document(data)
+                            ), null);
+
+                    count += 1;
+                }
+
+                // 记录写入数量 / Record write count
+                getTaskPluginCollector().collectMessage(Job.WRITE_SIZE, String.valueOf(count));
+                LOG.info("End to write record to ElasticSearch / 向ElasticSearch写入记录结束, total: {}", count);
+
+            } catch (Exception e) {
+                LOG.error("Failed to write record / 写入记录失败", e);
+                throw DataXException.asDataXException(Elastic8xWriterErrorCode.BULK_REQ_ERROR,
+                        "Failed to write record / 写入记录失败", e);
+            }
         }
 
         @Override
         public void destroy() {
-            // TODO: 第6层实现 / Layer 6 implementation
-            // 资源释放 / Resource cleanup
-            // 此方法将在第6层完整实现 / This method will be fully implemented in layer 6
+            // 关闭BulkIngester / Close BulkIngester
+            if (null != bulkIngester) {
+                try {
+                    bulkIngester.close();
+                    LOG.debug("BulkIngester closed successfully / BulkIngester关闭成功");
+                } catch (Exception e) {
+                    LOG.error("Failed to close BulkIngester / 关闭BulkIngester失败", e);
+                }
+            }
+
+            // 关闭ES8客户端 / Close ES8 client
+            if (null != restClient) {
+                try {
+                    restClient.close();
+                    LOG.debug("ES8 client closed successfully / ES8客户端关闭成功");
+                } catch (Exception e) {
+                    LOG.error("Failed to close ES8 client / 关闭ES8客户端失败", e);
+                }
+            }
+        }
+
+        /**
+         * 构建BulkListener / Build BulkListener
+         *
+         * @param pluginCollector DataX脏数据收集器 / DataX dirty data collector
+         * @return BulkListener实例 / BulkListener instance
+         */
+        private BulkListener<Object> buildBulkListener(final TaskPluginCollector pluginCollector) {
+            return new BulkListener<Object>() {
+                @Override
+                public void beforeBulk(long executionId, BulkRequest request, List<Object> contexts) {
+                    LOG.trace("Before bulk operation / 批量操作前, executionId: {}, operations: {}",
+                            executionId, request.operations().size());
+                }
+
+                @Override
+                public void afterBulk(long executionId, BulkRequest request, List<Object> contexts, BulkResponse response) {
+                    if (response.errors()) {
+                        // 处理批量操作中的错误 / Handle errors in bulk operation
+                        response.items().forEach(item -> {
+                            if (item.error() != null) {
+                                ErrorCause error = item.error();
+                                List<String> message = new ArrayList<>();
+                                message.add(item.id());
+                                message.add(error.reason());
+
+                                // 收集脏数据 / Collect dirty data
+                                // 创建DirtyRecord记录错误信息 / Create DirtyRecord to log error message
+                                DirtyRecord dirtyRecord = new DirtyRecord();
+                                dirtyRecord.addColumn(new StringColumn(item.id()));
+                                dirtyRecord.addColumn(new StringColumn(error.reason()));
+                                pluginCollector.collectDirtyRecord(dirtyRecord, null,
+                                        Json.toJson(message, null));
+
+                                // 错误计数 / Error count
+                                errorCount++;
+
+                                // 检查是否超过最大错误数 / Check if exceeded max errors
+                                if (maxErrors > 0 && errorCount > maxErrors) {
+                                    bulkError = true;
+                                    LOG.error("Exceeded max errors / 超过最大错误数: {}/{}, error: {}",
+                                            errorCount, maxErrors, error.reason());
+                                }
+                            }
+                        });
+                    }
+                    LOG.trace("After bulk operation / 批量操作后, executionId: {}, hasErrors: {}",
+                            executionId, response.errors());
+                }
+
+                @Override
+                public void afterBulk(long executionId, BulkRequest request, List<Object> contexts, Throwable failure) {
+                    // 忽略中断错误 / Ignore interrupted error
+                    if (!(failure instanceof InterruptedException)) {
+                        LOG.error("Bulk operation failed / 批量操作失败, executionId: {}", executionId, failure);
+                    }
+                    bulkError = true;
+                }
+            };
         }
     }
 }
