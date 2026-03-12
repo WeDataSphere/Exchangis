@@ -180,4 +180,9 @@ public final class Elastic8xKey {
      * keystore password (for SSL/TLS)
      */
     static final String KEYSTORE_PASSWORD = "keystorePassword";
+
+    /**
+     * date format (for date type field formatting)
+     */
+    static final String DATE_FORMAT = "dateFormat";
 }

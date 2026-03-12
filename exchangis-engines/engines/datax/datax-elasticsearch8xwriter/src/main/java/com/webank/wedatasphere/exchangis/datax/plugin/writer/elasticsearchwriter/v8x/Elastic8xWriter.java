@@ -399,10 +399,8 @@ public class Elastic8xWriter extends Writer {
         private String password;
         private String keyStorePath;
         private String keyStorePassword;
-        private String dataFormat;
+        private String dateFormat;
         private boolean allowIndexNotExist;
-        private long maxErrors;
-        private long errorCount = 0;
 
         @Override
         public void init() {
@@ -443,9 +441,8 @@ public class Elastic8xWriter extends Writer {
             keyStorePassword = this.taskConf.getString(Elastic8xKey.KEYSTORE_PASSWORD, "");
 
             // 获取其他配置 / Get other configuration
-            dataFormat = this.taskConf.getString("dataFormat", "");
+            dateFormat = this.taskConf.getString(Elastic8xKey.DATE_FORMAT, "");
             allowIndexNotExist = this.taskConf.getBool(Elastic8xKey.ALLOW_INDEX_NOT_EXIST, false);
-            maxErrors = this.taskConf.getLong(Elastic8xKey.MAX_ERRORS, 0L);
 
             // 获取endPoints并处理HTTPS / Get endPoints and process HTTPS
             String[] endPoints = this.taskConf.getString(Elastic8xKey.ENDPOINTS).split(DEFAULT_ENDPOINT_SPLIT);
@@ -508,7 +505,7 @@ public class Elastic8xWriter extends Writer {
 
                     // 转换Record为ES8文档 / Convert Record to ES8 document
                     Map<String, Object> data = Elastic8xColumn.toData(record, columns, columnNameSeparator,
-                            dataFormat, allowIndexNotExist);
+                            dateFormat, allowIndexNotExist);
 
                     // 添加到BulkIngester / Add to BulkIngester
                     // 使用BulkOperation.Builder构建索引操作 / Use BulkOperation.Builder to build index operation
@@ -530,6 +527,15 @@ public class Elastic8xWriter extends Writer {
                 throw DataXException.asDataXException(Elastic8xWriterErrorCode.BULK_REQ_ERROR,
                         "Failed to write record / 写入记录失败", e);
             }
+        }
+
+        @Override
+        public void startWrite(BasicDataReceiver<Object> receiver, Class<?> type) {
+            // ES8不支持DocWriteRequest模式,只支持Record模式
+            // ES8 doesn't support DocWriteRequest mode, only Record mode
+            // 调用父类默认实现 / Call parent class default implementation
+            LOG.warn("startWrite(BasicDataReceiver, Class) is not supported in ES8, calling super method");
+            super.startWrite(receiver, type);
         }
 
         @Override
@@ -587,16 +593,6 @@ public class Elastic8xWriter extends Writer {
                                 dirtyRecord.addColumn(new StringColumn(error.reason()));
                                 pluginCollector.collectDirtyRecord(dirtyRecord, null,
                                         Json.toJson(message, null));
-
-                                // 错误计数 / Error count
-                                errorCount++;
-
-                                // 检查是否超过最大错误数 / Check if exceeded max errors
-                                if (maxErrors > 0 && errorCount > maxErrors) {
-                                    bulkError = true;
-                                    LOG.error("Exceeded max errors / 超过最大错误数: {}/{}, error: {}",
-                                            errorCount, maxErrors, error.reason());
-                                }
                             }
                         });
                     }
