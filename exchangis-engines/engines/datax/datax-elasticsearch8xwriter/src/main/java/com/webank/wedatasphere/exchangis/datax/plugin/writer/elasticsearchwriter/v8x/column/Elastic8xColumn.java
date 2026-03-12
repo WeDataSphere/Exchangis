@@ -152,13 +152,22 @@ public class Elastic8xColumn {
                 }
             }
 
-            // 根据类型转换字段值
+            // 根据类型转换字段值 / Convert field value based on type
             Elastic8xFieldDataType dataType;
-            try {
-                dataType = Elastic8xFieldDataType.valueOf(config.getType().toUpperCase());
-            } catch (IllegalArgumentException e) {
-                LOG.warn("Unknown type: {}, using TEXT as default", config.getType());
-                dataType = Elastic8xFieldDataType.TEXT;
+
+            // 如果配置的type为空且允许索引不存在,自动推测字段类型
+            // If configured type is null and allowIndexNotExist is true, auto-detect field type
+            if (StringUtils.isBlank(config.getType()) && allowIndexNotExist) {
+                dataType = autoDetectFieldType(column);
+                LOG.debug("Auto-detected field type for column '{}' as: {}", columnName, dataType);
+            } else {
+                // 使用配置的类型 / Use configured type
+                try {
+                    dataType = Elastic8xFieldDataType.valueOf(config.getType().toUpperCase());
+                } catch (IllegalArgumentException e) {
+                    LOG.warn("Unknown type: {}, using TEXT as default / 未知类型: {}, 使用TEXT作为默认值", config.getType());
+                    dataType = Elastic8xFieldDataType.TEXT;
+                }
             }
 
             Object value;
@@ -242,6 +251,57 @@ public class Elastic8xColumn {
         }
 
         return outputData;
+    }
+
+    /**
+     * 自动推测字段类型 / Auto-detect field type based on Column type
+     *
+     * 映射规则 / Mapping rules:
+     * - Type.INT => Elastic8xFieldDataType.INTEGER
+     * - Type.LONG => Elastic8xFieldDataType.LONG
+     * - Type.BOOLEAN => Elastic8xFieldDataType.BOOLEAN
+     * - Type.BYTES => Elastic8xFieldDataType.BYTE
+     * - Type.STRING => Elastic8xFieldDataType.TEXT
+     * - Type.DATE => Elastic8xFieldDataType.DATE
+     * - 其他 / Others: 尝试通过type name转换 / Try to convert via type name
+     *
+     * @param column DataX Column对象 / DataX Column object
+     * @return 推测的字段类型 / Detected field type
+     */
+    private static Elastic8xFieldDataType autoDetectFieldType(Column column) {
+        if (column == null || column.getType() == null) {
+            LOG.warn("Column or its type is null, defaulting to TEXT / Column或其类型为null,默认使用TEXT");
+            return Elastic8xFieldDataType.TEXT;
+        }
+
+        Column.Type columnType = column.getType();
+
+        // 根据Column类型映射到ES8字段类型 / Map Column type to ES8 field type
+        switch (columnType) {
+            case INT:
+                return Elastic8xFieldDataType.INTEGER;
+            case LONG:
+                return Elastic8xFieldDataType.LONG;
+            case BOOLEAN:
+                return Elastic8xFieldDataType.BOOLEAN;
+            case BYTES:
+                return Elastic8xFieldDataType.BYTE;
+            case STRING:
+                return Elastic8xFieldDataType.TEXT;
+            case DATE:
+                return Elastic8xFieldDataType.DATE;
+            case DOUBLE:
+                return Elastic8xFieldDataType.DOUBLE;
+            default:
+                // 尝试通过type name转换 / Try to convert via type name
+                try {
+                    return Elastic8xFieldDataType.valueOf(columnType.name().toUpperCase());
+                } catch (IllegalArgumentException e) {
+                    LOG.warn("Cannot map column type {} to ES8 field type, defaulting to TEXT / 无法将Column类型 {} 映射到ES8字段类型,默认使用TEXT",
+                            columnType, columnType);
+                    return Elastic8xFieldDataType.TEXT;
+                }
+        }
     }
 
     /**
