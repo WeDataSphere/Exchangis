@@ -37,7 +37,7 @@
 	</licenses>
 
 	<properties>
-		<revision>1.1.8-webank</revision>
+		<revision>1.1.14-webank</revision>
 		<dss.version>1.8.0-SNAPSHOT</dss.version>
 		<linkis.version>1.9.0-wds</linkis.version>
 		<streamis.version>0.1.0-SNAPSHOT</streamis.version>
