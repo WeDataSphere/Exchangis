@@ -234,6 +234,11 @@ public class Elastic8xColumn {
                         innerOutput.put(columnName, value);
                         break;
 
+                    case SPARSE_VECTOR:
+                        value = parseSparseVector(column);
+                        innerOutput.put(columnName, value);
+                        break;
+
                     case ALIAS:
                         // ALIAS is a metadata field, treat as string
                         value = column.asString();
@@ -373,6 +378,37 @@ public class Elastic8xColumn {
         } catch (Exception e) {
             throw DataXException.asDataXException(Elastic8xWriterErrorCode.VECTOR_PARSE_ERROR,
                     "Failed to parse vector: " + column.asString(), e);
+        }
+    }
+
+    /**
+     * 解析稀疏向量类型（SPARSE_VECTOR）
+     * 输入格式：JSON对象字符串，键为字符串，值为Float类型
+     * 例如：{"I": 0.55, "had": 0.4}
+     *
+     * Parse sparse vector type (SPARSE_VECTOR)
+     * Input format: JSON object string, key as string, value as Float type
+     * Example: {"I": 0.55, "had": 0.4}
+     *
+     * @param column DataX Column对象 / DataX Column object
+     * @return Map<String, Float> 稀疏向量的键值对映射 / Sparse vector key-value mapping
+     */
+    private static Map<String, Float> parseSparseVector(Column column) {
+        try {
+            String rawData = column.asString();
+            JsonNode jsonNode = Json.getMapper().readTree(rawData);
+            if (jsonNode.isObject()) {
+                Map<String, Float> sparseVector = new HashMap<>();
+                jsonNode.fields().forEachRemaining(entry -> {
+                    sparseVector.put(entry.getKey(), (float) entry.getValue().asDouble());
+                });
+                return sparseVector;
+            } else {
+                throw new IllegalArgumentException("Sparse vector data must be an object");
+            }
+        } catch (Exception e) {
+            throw DataXException.asDataXException(Elastic8xWriterErrorCode.VECTOR_PARSE_ERROR,
+                    "Failed to parse sparse vector: " + column.asString(), e);
         }
     }
 }

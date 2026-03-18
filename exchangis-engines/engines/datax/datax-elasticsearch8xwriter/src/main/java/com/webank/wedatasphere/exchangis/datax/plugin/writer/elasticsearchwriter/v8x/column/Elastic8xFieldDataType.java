@@ -129,5 +129,9 @@ public enum Elastic8xFieldDataType {
     /**
      * type:dense_vector (ES8新特性)
      */
-    DENSE_VECTOR
+    DENSE_VECTOR,
+    /**
+     * type:sparse_vector (ES8新特性)
+     */
+    SPARSE_VECTOR
 }
