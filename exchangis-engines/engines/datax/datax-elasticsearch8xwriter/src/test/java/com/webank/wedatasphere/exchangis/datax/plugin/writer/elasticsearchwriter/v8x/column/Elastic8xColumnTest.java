@@ -174,8 +174,8 @@ public class Elastic8xColumnTest {
     }
 
     @Test
-    @DisplayName("应该成功转换BYTE类型字段 / Should successfully convert BYTE field")
-    void should_ConvertByteField_When_ValidByteColumn() {
+    @DisplayName("应该成功转换BINARY类型字段 / Should successfully convert BINARY field")
+    void should_ConvertBinaryField_When_ValidBinaryColumn() {
         // Given / 给定
         byte[] testBytes = "test data".getBytes();
         setupColumnConfig("binary_data", "binary", null, null);
@@ -191,6 +191,26 @@ public class Elastic8xColumnTest {
                 .isNotNull()
                 .hasSize(1)
                 .containsEntry("binary_data", testBytes);
+    }
+
+    @Test
+    @DisplayName("应该成功转换BYTE类型字段为整数 / Should successfully convert BYTE field to integer")
+    void should_ConvertByteField_When_ValidByteColumn() {
+        // Given / 给定
+        // ES的byte类型是整数类型，范围-128到127
+        setupColumnConfig("small_number", "byte", null, null);
+        setupMockColumn(mockColumn, Column.Type.LONG, 100L);
+        setupMockRecord(1);
+
+        // When / 当
+        Map<String, Object> result = Elastic8xColumn.toData(
+                mockRecord, columnConfigs, COLUMN_SEPARATOR, null, false);
+
+        // Then / 那么
+        assertThat(result)
+                .isNotNull()
+                .hasSize(1)
+                .containsEntry("small_number", 100L);
     }
 
     // ==================== 向量类型测试 / Vector Type Tests ====================

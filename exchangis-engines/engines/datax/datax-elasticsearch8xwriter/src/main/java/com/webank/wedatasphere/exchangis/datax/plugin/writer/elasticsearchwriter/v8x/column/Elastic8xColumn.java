@@ -191,6 +191,7 @@ public class Elastic8xColumn {
 
                     case LONG_RANGE:
                     case LONG:
+                    case BYTE:
                         value = column.asLong();
                         innerOutput.put(columnName, value);
                         break;
@@ -213,7 +214,6 @@ public class Elastic8xColumn {
                         break;
 
                     case BINARY:
-                    case BYTE:
                         value = column.asBytes();
                         innerOutput.put(columnName, value);
                         break;
