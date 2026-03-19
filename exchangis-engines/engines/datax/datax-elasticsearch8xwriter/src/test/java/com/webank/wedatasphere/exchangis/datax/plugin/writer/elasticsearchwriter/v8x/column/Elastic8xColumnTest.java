@@ -35,6 +35,7 @@ import java.util.List;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.within;
 import static org.mockito.Mockito.mock;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.when;
@@ -577,5 +578,101 @@ public class Elastic8xColumnTest {
         for (int i = 0; i < columnCount; i++) {
             when(mockRecord.getColumn(i)).thenReturn(mockColumn);
         }
+    }
+
+    // ==================== 精度测试 / Precision Tests ====================
+
+    @Test
+    @DisplayName("应该保持浮点数精度解析SPARSE_VECTOR / Should preserve floating-point precision when parsing SPARSE_VECTOR")
+    void should_PreserveFloatPrecision_When_ParsingSparseVector() {
+        // Given / 给定
+        // 使用容易产生精度问题的浮点数 / Use floating-point numbers that are prone to precision issues
+        String sparseVectorJson = "{\"value1\": 0.1, \"value2\": 0.2, \"value3\": 0.3}";
+        setupColumnConfig("sparse_embedding", "sparse_vector", null, null);
+        setupMockColumn(mockColumn, Column.Type.STRING, sparseVectorJson);
+        setupMockRecord(1);
+
+        // When / 当
+        Map<String, Object> result = Elastic8xColumn.toData(
+                mockRecord, columnConfigs, COLUMN_SEPARATOR, null, false);
+
+        // Then / 那么
+        assertThat(result)
+                .isNotNull()
+                .hasSize(1);
+
+        Object sparseEmbedding = result.get("sparse_embedding");
+        assertThat(sparseEmbedding).isInstanceOf(Map.class);
+
+        @SuppressWarnings("unchecked")
+        Map<String, Float> sparseVector = (Map<String, Float>) sparseEmbedding;
+
+        // 验证精度：使用BigDecimal作为中间层应该保证精度
+        // Verify precision: using BigDecimal as intermediate should preserve precision
+        assertThat(sparseVector.get("value1")).isEqualTo(0.1f);
+        assertThat(sparseVector.get("value2")).isEqualTo(0.2f);
+        assertThat(sparseVector.get("value3")).isEqualTo(0.3f);
+    }
+
+    @Test
+    @DisplayName("应该保持浮点数精度解析DENSE_VECTOR / Should preserve floating-point precision when parsing DENSE_VECTOR")
+    void should_PreserveFloatPrecision_When_ParsingDenseVector() {
+        // Given / 给定
+        // 使用容易产生精度问题的浮点数 / Use floating-point numbers that are prone to precision issues
+        String vectorJson = "[0.1, 0.2, 0.3, 0.123456789]";
+        setupColumnConfig("embedding", "dense_vector", null, 4);
+        setupMockColumn(mockColumn, Column.Type.STRING, vectorJson);
+        setupMockRecord(1);
+
+        // When / 当
+        Map<String, Object> result = Elastic8xColumn.toData(
+                mockRecord, columnConfigs, COLUMN_SEPARATOR, null, false);
+
+        // Then / 那么
+        assertThat(result)
+                .isNotNull()
+                .hasSize(1);
+
+        Object embedding = result.get("embedding");
+        assertThat(embedding).isInstanceOf(double[].class);
+
+        double[] vector = (double[]) embedding;
+
+        // 验证精度：使用BigDecimal作为中间层应该保证精度
+        // Verify precision: using BigDecimal as intermediate should preserve precision
+        assertThat(vector[0]).isEqualTo(0.1, within(0.0001));
+        assertThat(vector[1]).isEqualTo(0.2, within(0.0001));
+        assertThat(vector[2]).isEqualTo(0.3, within(0.0001));
+        assertThat(vector[3]).isEqualTo(0.123456789, within(0.000000001));
+    }
+
+    @Test
+    @DisplayName("应该成功解析SPARSE_VECTOR类型字段 / Should successfully parse SPARSE_VECTOR field")
+    void should_ParseSparseVector_When_ValidJsonObject() {
+        // Given / 给定
+        String sparseVectorJson = "{\"I\": 0.55, \"had\": 0.4, \"the\": 0.3}";
+        setupColumnConfig("text_embedding", "sparse_vector", null, null);
+        setupMockColumn(mockColumn, Column.Type.STRING, sparseVectorJson);
+        setupMockRecord(1);
+
+        // When / 当
+        Map<String, Object> result = Elastic8xColumn.toData(
+                mockRecord, columnConfigs, COLUMN_SEPARATOR, null, false);
+
+        // Then / 那么
+        assertThat(result)
+                .isNotNull()
+                .hasSize(1);
+
+        Object textEmbedding = result.get("text_embedding");
+        assertThat(textEmbedding).isInstanceOf(Map.class);
+
+        @SuppressWarnings("unchecked")
+        Map<String, Float> sparseVector = (Map<String, Float>) textEmbedding;
+        assertThat(sparseVector)
+                .hasSize(3)
+                .containsEntry("I", 0.55f)
+                .containsEntry("had", 0.4f)
+                .containsEntry("the", 0.3f);
     }
 }

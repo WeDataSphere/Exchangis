@@ -32,6 +32,7 @@ import org.joda.time.format.DateTimeFormatter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.math.BigDecimal;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -360,16 +361,21 @@ public class Elastic8xColumn {
     /**
      * 解析向量类型（DENSE_VECTOR）
      * 支持格式：JSON数组字符串，如"[0.1, 0.2, 0.3]"
+     *
+     * 使用BigDecimal作为中间层确保精度：asText() -> new BigDecimal() -> doubleValue()
      */
     private static double[] parseVector(Column column) {
         try {
             // 解析JSON数组字符串
             String rawData = column.asString();
-            JsonNode jsonNode = Json.getMapper().readTree(rawData);
+            // 使用VectorJson的ObjectMapper，确保浮点数解析精度
+            JsonNode jsonNode = VectorJson.getMapper().readTree(rawData);
             if (jsonNode.isArray()) {
                 double[] vector = new double[jsonNode.size()];
                 for (int i = 0; i < jsonNode.size(); i++) {
-                    vector[i] = jsonNode.get(i).asDouble();
+                    // 双保险：先asText转为字符串，再通过BigDecimal，最后转double
+                    // Double insurance: first asText to string, then through BigDecimal, finally to double
+                    vector[i] = new BigDecimal(jsonNode.get(i).asText()).doubleValue();
                 }
                 return vector;
             } else {
@@ -390,17 +396,23 @@ public class Elastic8xColumn {
      * Input format: JSON object string, key as string, value as Float type
      * Example: {"I": 0.55, "had": 0.4}
      *
+     * 使用BigDecimal作为中间层确保精度：asText() -> new BigDecimal() -> floatValue()
+     *
      * @param column DataX Column对象 / DataX Column object
      * @return Map<String, Float> 稀疏向量的键值对映射 / Sparse vector key-value mapping
      */
     private static Map<String, Float> parseSparseVector(Column column) {
         try {
             String rawData = column.asString();
-            JsonNode jsonNode = Json.getMapper().readTree(rawData);
+            // 使用VectorJson的ObjectMapper，确保浮点数解析精度
+            JsonNode jsonNode = VectorJson.getMapper().readTree(rawData);
             if (jsonNode.isObject()) {
                 Map<String, Float> sparseVector = new HashMap<>();
                 jsonNode.fields().forEachRemaining(entry -> {
-                    sparseVector.put(entry.getKey(), (float) entry.getValue().asDouble());
+                    // 双保险：先asText转为字符串，再通过BigDecimal，最后转float
+                    // Double insurance: first asText to string, then through BigDecimal, finally to float
+                    sparseVector.put(entry.getKey(),
+                        new BigDecimal(entry.getValue().asText()).floatValue());
                 });
                 return sparseVector;
             } else {
