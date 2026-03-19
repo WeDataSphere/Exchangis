@@ -605,13 +605,13 @@ public class Elastic8xColumnTest {
         assertThat(sparseEmbedding).isInstanceOf(Map.class);
 
         @SuppressWarnings("unchecked")
-        Map<String, Float> sparseVector = (Map<String, Float>) sparseEmbedding;
+        Map<String, Double> sparseVector = (Map<String, Double>) sparseEmbedding;
 
-        // 验证精度：使用BigDecimal作为中间层应该保证精度
-        // Verify precision: using BigDecimal as intermediate should preserve precision
-        assertThat(sparseVector.get("value1")).isEqualTo(0.1f);
-        assertThat(sparseVector.get("value2")).isEqualTo(0.2f);
-        assertThat(sparseVector.get("value3")).isEqualTo(0.3f);
+        // 验证精度：使用decimalValue()直接获取BigDecimal应该保证精度
+        // Verify precision: using decimalValue() to directly get BigDecimal should preserve precision
+        assertThat(sparseVector.get("value1")).isEqualTo(0.1);
+        assertThat(sparseVector.get("value2")).isEqualTo(0.2);
+        assertThat(sparseVector.get("value3")).isEqualTo(0.3);
     }
 
     @Test
@@ -668,11 +668,11 @@ public class Elastic8xColumnTest {
         assertThat(textEmbedding).isInstanceOf(Map.class);
 
         @SuppressWarnings("unchecked")
-        Map<String, Float> sparseVector = (Map<String, Float>) textEmbedding;
+        Map<String, Double> sparseVector = (Map<String, Double>) textEmbedding;
         assertThat(sparseVector)
                 .hasSize(3)
-                .containsEntry("I", 0.55f)
-                .containsEntry("had", 0.4f)
-                .containsEntry("the", 0.3f);
+                .containsEntry("I", 0.55)
+                .containsEntry("had", 0.4)
+                .containsEntry("the", 0.3);
     }
 }

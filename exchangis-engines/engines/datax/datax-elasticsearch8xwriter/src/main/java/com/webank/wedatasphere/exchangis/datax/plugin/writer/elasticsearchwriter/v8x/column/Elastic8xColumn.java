@@ -362,20 +362,20 @@ public class Elastic8xColumn {
      * 解析向量类型（DENSE_VECTOR）
      * 支持格式：JSON数组字符串，如"[0.1, 0.2, 0.3]"
      *
-     * 使用BigDecimal作为中间层确保精度：asText() -> new BigDecimal() -> doubleValue()
+     * 使用decimalValue()直接获取BigDecimal，确保精度
+     * Use decimalValue() to directly get BigDecimal, ensuring precision
      */
     private static double[] parseVector(Column column) {
         try {
-            // 解析JSON数组字符串
+            // 解析JSON数组字符串 / Parse JSON array string
             String rawData = column.asString();
-            // 使用VectorJson的ObjectMapper，确保浮点数解析精度
+            // 使用VectorJson的ObjectMapper，确保浮点数解析精度 / Use VectorJson's ObjectMapper to ensure precision
             JsonNode jsonNode = VectorJson.getMapper().readTree(rawData);
             if (jsonNode.isArray()) {
                 double[] vector = new double[jsonNode.size()];
                 for (int i = 0; i < jsonNode.size(); i++) {
-                    // 双保险：先asText转为字符串，再通过BigDecimal，最后转double
-                    // Double insurance: first asText to string, then through BigDecimal, finally to double
-                    vector[i] = new BigDecimal(jsonNode.get(i).asText()).doubleValue();
+                    // 使用decimalValue()直接获取BigDecimal，确保精度 / Use decimalValue() to directly get BigDecimal, ensuring precision
+                    vector[i] = jsonNode.get(i).decimalValue().doubleValue();
                 }
                 return vector;
             } else {
@@ -389,30 +389,30 @@ public class Elastic8xColumn {
 
     /**
      * 解析稀疏向量类型（SPARSE_VECTOR）
-     * 输入格式：JSON对象字符串，键为字符串，值为Float类型
+     * 输入格式：JSON对象字符串，键为字符串，值为Double类型
      * 例如：{"I": 0.55, "had": 0.4}
      *
      * Parse sparse vector type (SPARSE_VECTOR)
-     * Input format: JSON object string, key as string, value as Float type
+     * Input format: JSON object string, key as string, value as Double type
      * Example: {"I": 0.55, "had": 0.4}
      *
-     * 使用BigDecimal作为中间层确保精度：asText() -> new BigDecimal() -> floatValue()
+     * 使用decimalValue()直接获取BigDecimal，确保精度
+     * Use decimalValue() to directly get BigDecimal, ensuring precision
      *
      * @param column DataX Column对象 / DataX Column object
-     * @return Map<String, Float> 稀疏向量的键值对映射 / Sparse vector key-value mapping
+     * @return Map<String, Double> 稀疏向量的键值对映射 / Sparse vector key-value mapping
      */
-    private static Map<String, Float> parseSparseVector(Column column) {
+    private static Map<String, Double> parseSparseVector(Column column) {
         try {
             String rawData = column.asString();
-            // 使用VectorJson的ObjectMapper，确保浮点数解析精度
+            // 使用VectorJson的ObjectMapper，确保浮点数解析精度 / Use VectorJson's ObjectMapper to ensure precision
             JsonNode jsonNode = VectorJson.getMapper().readTree(rawData);
             if (jsonNode.isObject()) {
-                Map<String, Float> sparseVector = new HashMap<>();
+                Map<String, Double> sparseVector = new HashMap<>();
                 jsonNode.fields().forEachRemaining(entry -> {
-                    // 双保险：先asText转为字符串，再通过BigDecimal，最后转float
-                    // Double insurance: first asText to string, then through BigDecimal, finally to float
+                    // 使用decimalValue()直接获取BigDecimal，确保精度 / Use decimalValue() to directly get BigDecimal, ensuring precision
                     sparseVector.put(entry.getKey(),
-                        new BigDecimal(entry.getValue().asText()).floatValue());
+                        entry.getValue().decimalValue().doubleValue());
                 });
                 return sparseVector;
             } else {

@@ -132,6 +132,8 @@ public enum Elastic8xFieldDataType {
     DENSE_VECTOR,
     /**
      * type:sparse_vector (ES8新特性)
+     * 返回类型：Map<String, Double>，ES对浮点数统一按double处理
+     * Return type: Map<String, Double>, ES handles all floating-point numbers as double
      */
     SPARSE_VECTOR
 }
