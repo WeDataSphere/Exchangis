@@ -185,4 +185,10 @@ public final class Elastic8xKey {
      * date format (for date type field formatting)
      */
     static final String DATE_FORMAT = "dateFormat";
+
+    /**
+     * dataStream (use create operation instead of index)
+     * 数据流模式（使用create操作代替index操作）
+     */
+    static final String DATA_STREAM = "dataStream";
 }

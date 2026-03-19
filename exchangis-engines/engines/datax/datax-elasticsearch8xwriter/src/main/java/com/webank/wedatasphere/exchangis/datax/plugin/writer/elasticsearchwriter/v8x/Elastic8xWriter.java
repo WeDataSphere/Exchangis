@@ -25,6 +25,7 @@ import co.elastic.clients.elasticsearch.core.BulkResponse;
 import co.elastic.clients.elasticsearch.core.bulk.BulkOperation;
 import co.elastic.clients.elasticsearch.core.bulk.BulkOperationBase;
 import co.elastic.clients.elasticsearch.core.bulk.BulkOperationVariant;
+import co.elastic.clients.elasticsearch.core.bulk.CreateOperation;
 import co.elastic.clients.elasticsearch.core.bulk.IndexOperation;
 import co.elastic.clients.util.ObjectBuilder;
 import com.alibaba.datax.common.element.Record;
@@ -408,6 +409,7 @@ public class Elastic8xWriter extends Writer {
         private String keyStorePassword;
         private String dateFormat;
         private boolean allowIndexNotExist;
+        private boolean dataStream;
 
         /**
          * 索引提取器（支持动态索引模式）/ Index extractor (supports dynamic index pattern)
@@ -515,6 +517,12 @@ public class Elastic8xWriter extends Writer {
             dateFormat = this.taskConf.getString(Elastic8xKey.DATE_FORMAT, "");
             allowIndexNotExist = this.taskConf.getBool(Elastic8xKey.ALLOW_INDEX_NOT_EXIST, false);
 
+            // 获取dataStream配置（是否使用create操作）/ Get dataStream config (use create operation or not)
+            dataStream = this.taskConf.getBool(Elastic8xKey.DATA_STREAM, false);
+            if (dataStream) {
+                LOG.info("DataStream mode enabled / 数据流模式已启用, using create operation / 使用create操作");
+            }
+
             // 获取endPoints并处理HTTPS / Get endPoints and process HTTPS
             String[] endPoints = this.taskConf.getString(Elastic8xKey.ENDPOINTS).split(DEFAULT_ENDPOINT_SPLIT);
             String[] processedEndPoints = endPoints;
@@ -591,23 +599,36 @@ public class Elastic8xWriter extends Writer {
                     }
 
                     // 构建索引操作 / Build index operation
-                    // 使用BulkOperation.Builder构建索引操作 / Use BulkOperation.Builder to build index operation
-                    IndexOperation.Builder<Object> builder =
-                            new IndexOperation.Builder<>()
-                                    .index(targetIndex).document(data);
-
-                    // 生成文档ID（如果配置了idField）/ Generate document ID (if idField is configured)
+                    // DataStream模式使用CreateOperation，普通模式使用IndexOperation
+                    // DataStream mode uses CreateOperation, normal mode uses IndexOperation
                     String id = idGenerator.apply(data);
                     if (StringUtils.isNotBlank(id)){
-                        builder.id(id);
                         if (LOG.isTraceEnabled()){
                             LOG.trace("Set document ID / 设置文档ID: {} for index: {} / 为索引", id, targetIndex);
                         }
                     }
 
                     // 添加到BulkIngester / Add to BulkIngester
-                    bulkIngester.add(bulkOperationBuilder -> bulkOperationBuilder
-                            .index(builder.build()), null);
+                    if (dataStream) {
+                        // DataStream模式：使用CreateOperation / DataStream mode: use CreateOperation
+                        CreateOperation.Builder<Object> createBuilder = new CreateOperation.Builder<>()
+                                .index(targetIndex).document(data);
+                        if (StringUtils.isNotBlank(id)){
+                            createBuilder.id(id);
+                        }
+                        bulkIngester.add(bulkOperationBuilder -> bulkOperationBuilder
+                                .create(createBuilder.build()), null);
+                    } else {
+                        // 普通模式：使用IndexOperation / Normal mode: use IndexOperation
+                        IndexOperation.Builder<Object> builder =
+                                new IndexOperation.Builder<>()
+                                        .index(targetIndex).document(data);
+                        if (StringUtils.isNotBlank(id)){
+                            builder.id(id);
+                        }
+                        bulkIngester.add(bulkOperationBuilder -> bulkOperationBuilder
+                                .index(builder.build()), null);
+                    }
                     count += 1;
                 }
                 bulkIngester.close();
