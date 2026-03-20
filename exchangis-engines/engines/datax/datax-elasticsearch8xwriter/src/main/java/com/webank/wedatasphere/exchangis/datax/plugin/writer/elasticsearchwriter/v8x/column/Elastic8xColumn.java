@@ -361,6 +361,8 @@ public class Elastic8xColumn {
     /**
      * 解析向量类型（DENSE_VECTOR）
      * 支持格式：JSON数组字符串，如"[0.1, 0.2, 0.3]"
+     * 支持数值类型和字符串类型值的自动转换
+     * Support automatic conversion of numeric and string type values
      *
      * 使用decimalValue()直接获取BigDecimal，确保精度
      * Use decimalValue() to directly get BigDecimal, ensuring precision
@@ -374,8 +376,15 @@ public class Elastic8xColumn {
             if (jsonNode.isArray()) {
                 double[] vector = new double[jsonNode.size()];
                 for (int i = 0; i < jsonNode.size(); i++) {
-                    // 使用decimalValue()直接获取BigDecimal，确保精度 / Use decimalValue() to directly get BigDecimal, ensuring precision
-                    vector[i] = jsonNode.get(i).decimalValue().doubleValue();
+                    JsonNode valueNode = jsonNode.get(i);
+                    // 兼容数值类型和字符串类型 / Support both numeric and string types
+                    if (valueNode.isNumber()) {
+                        vector[i] = valueNode.decimalValue().doubleValue();
+                    } else if (valueNode.isTextual()) {
+                        vector[i] = Double.parseDouble(valueNode.asText());
+                    } else {
+                        throw new IllegalArgumentException("Vector element must be number or string");
+                    }
                 }
                 return vector;
             } else {
@@ -389,15 +398,15 @@ public class Elastic8xColumn {
 
     /**
      * 解析稀疏向量类型（SPARSE_VECTOR）
-     * 输入格式：JSON对象字符串，键为字符串，值为Double类型
-     * 例如：{"I": 0.55, "had": 0.4}
+     * 输入格式：JSON对象字符串，键为字符串，值为Double类型或String类型
+     * 例如：{"I": 0.55, "had": 0.4} 或 {"I": "0.55", "had": "0.4"}
      *
      * Parse sparse vector type (SPARSE_VECTOR)
-     * Input format: JSON object string, key as string, value as Double type
-     * Example: {"I": 0.55, "had": 0.4}
+     * Input format: JSON object string, key as string, value as Double or String type
+     * Example: {"I": 0.55, "had": 0.4} or {"I": "0.55", "had": "0.4"}
      *
-     * 使用decimalValue()直接获取BigDecimal，确保精度
-     * Use decimalValue() to directly get BigDecimal, ensuring precision
+     * 支持数值类型和字符串类型值的自动转换
+     * Support automatic conversion of numeric and string type values
      *
      * @param column DataX Column对象 / DataX Column object
      * @return Map<String, Double> 稀疏向量的键值对映射 / Sparse vector key-value mapping
@@ -410,9 +419,17 @@ public class Elastic8xColumn {
             if (jsonNode.isObject()) {
                 Map<String, Double> sparseVector = new HashMap<>();
                 jsonNode.fields().forEachRemaining(entry -> {
-                    // 使用decimalValue()直接获取BigDecimal，确保精度 / Use decimalValue() to directly get BigDecimal, ensuring precision
-                    sparseVector.put(entry.getKey(),
-                        entry.getValue().decimalValue().doubleValue());
+                    JsonNode valueNode = entry.getValue();
+                    // 兼容数值类型和字符串类型 / Support both numeric and string types
+                    if (valueNode.isNumber()) {
+                        sparseVector.put(entry.getKey(),
+                                valueNode.decimalValue().doubleValue());
+                    } else if (valueNode.isTextual()) {
+                        sparseVector.put(entry.getKey(),
+                                Double.parseDouble(valueNode.asText()));
+                    } else {
+                        throw new IllegalArgumentException("Sparse vector value must be number or string");
+                    }
                 });
                 return sparseVector;
             } else {
