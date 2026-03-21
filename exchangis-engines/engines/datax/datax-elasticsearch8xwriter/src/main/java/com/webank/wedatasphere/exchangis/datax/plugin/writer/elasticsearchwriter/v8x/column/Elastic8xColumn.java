@@ -57,7 +57,11 @@ public class Elastic8xColumn {
     private static final String ARRAY_SUFFIX = "]";
     private static final String ARRAY_PREFIX = "[";
 
-    public static final String DEFAULT_NAME_SPLIT = "\\.";
+    /**
+     * 默认字段名分隔符 / Default column name separator
+     * 使用管道符 | 作为分隔符
+     */
+    public static final String DEFAULT_NAME_SPLIT = "\\|";
 
     private String name;
 
