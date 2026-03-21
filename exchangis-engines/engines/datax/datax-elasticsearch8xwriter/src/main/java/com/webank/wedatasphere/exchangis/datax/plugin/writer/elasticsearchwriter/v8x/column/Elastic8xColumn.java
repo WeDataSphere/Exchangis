@@ -150,15 +150,27 @@ public class Elastic8xColumn {
             String[] levelColumns = columnName.split(columnNameSeparator);
             if (levelColumns.length > 1) {
                 columnName = levelColumns[levelColumns.length - 1];
+                boolean pathValid = true;
                 for (int j = 0; j < levelColumns.length - 1; j++) {
-                    // 使用putIfAbsent避免覆盖已存在的嵌套对象
-                    // Use putIfAbsent to avoid overwriting existing nested objects
-                    Map<String, Object> data = (Map<String, Object>) innerOutput.get(levelColumns[j]);
-                    if (data == null) {
-                        data = new HashMap<>();
+                    Object existingValue = innerOutput.get(levelColumns[j]);
+                    if (existingValue == null) {
+                        // 路径不存在，创建新的嵌套对象 / Path does not exist, create new nested object
+                        Map<String, Object> data = new HashMap<>();
                         innerOutput.put(levelColumns[j], data);
+                        innerOutput = data;
+                    } else if (existingValue instanceof Map) {
+                        // 路径存在且为Map类型，继续向下遍历 / Path exists and is Map type, continue traversing
+                        innerOutput = (Map<String, Object>) existingValue;
+                    } else {
+                        // 路径存在但类型不是Map，无法继续嵌套 / Path exists but type is not Map, cannot continue nesting
+                        LOG.warn("Nested field path conflict: '{}' is not a Map type, skipping field: {} / 嵌套字段路径冲突: '{}' 不是Map类型，跳过字段: {}",
+                                levelColumns[j], config.getName());
+                        pathValid = false;
+                        break;
                     }
-                    innerOutput = data;
+                }
+                if (!pathValid) {
+                    continue; // 跳过该字段 / Skip this field
                 }
             }
 

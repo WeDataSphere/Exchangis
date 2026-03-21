@@ -29,6 +29,8 @@ import org.joda.time.DateTime;
 import org.joda.time.DateTimeZone;
 import org.joda.time.format.DateTimeFormat;
 import org.joda.time.format.DateTimeFormatter;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.HashMap;
 import java.util.List;
@@ -39,6 +41,8 @@ import java.util.Map;
  * 2019/8/15
  */
 public class ElasticColumn {
+
+    private static final Logger LOG = LoggerFactory.getLogger(ElasticColumn.class);
 
     private static final String ARRAY_SUFFIX = "]";
     private static final String ARRAY_PREFIX = "[";
@@ -96,15 +100,28 @@ public class ElasticColumn {
             String[] levelColumns = columnName.split(columnNameSeparator);
             if(levelColumns.length > 1) {
                 columnName = levelColumns[levelColumns.length - 1];
+                boolean pathValid = true;
                 for (int j = 0; j < levelColumns.length - 1 ; j++) {
-                    // 使用putIfAbsent避免覆盖已存在的嵌套对象
-                    // Use putIfAbsent to avoid overwriting existing nested objects
-                    Map<String, Object> data = (Map<String, Object>) innerOutput.get(levelColumns[j]);
-                    if (data == null) {
-                        data = new HashMap<>();
+                    // 检查路径是否有效 / Check if path is valid
+                    Object existingValue = innerOutput.get(levelColumns[j]);
+                    if (existingValue == null) {
+                        // 路径不存在，创建新的嵌套对象 / Path does not exist, create new nested object
+                        Map<String, Object> data = new HashMap<>();
                         innerOutput.put(levelColumns[j], data);
+                        innerOutput = data;
+                    } else if (existingValue instanceof Map) {
+                        // 路径存在且为Map类型，继续向下遍历 / Path exists and is Map type, continue traversing
+                        innerOutput = (Map<String, Object>) existingValue;
+                    } else {
+                        // 路径存在但类型不是Map，无法继续嵌套 / Path exists but type is not Map, cannot continue nesting
+                        LOG.warn("Nested field path conflict: '{}' is not a Map type, skipping field: {} / 嵌套字段路径冲突: '{}' 不是Map类型，跳过字段: {}",
+                                levelColumns[j], config.getName());
+                        pathValid = false;
+                        break;
                     }
-                    innerOutput = data;
+                }
+                if (!pathValid) {
+                    continue; // 跳过该字段 / Skip this field
                 }
             }
             ElasticFieldDataType type = ElasticFieldDataType.valueOf(config.getType().toUpperCase());
