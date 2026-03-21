@@ -151,8 +151,13 @@ public class Elastic8xColumn {
             if (levelColumns.length > 1) {
                 columnName = levelColumns[levelColumns.length - 1];
                 for (int j = 0; j < levelColumns.length - 1; j++) {
-                    Map<String, Object> data = new HashMap<>();
-                    innerOutput.put(levelColumns[j], data);
+                    // 使用putIfAbsent避免覆盖已存在的嵌套对象
+                    // Use putIfAbsent to avoid overwriting existing nested objects
+                    Map<String, Object> data = (Map<String, Object>) innerOutput.get(levelColumns[j]);
+                    if (data == null) {
+                        data = new HashMap<>();
+                        innerOutput.put(levelColumns[j], data);
+                    }
                     innerOutput = data;
                 }
             }
