@@ -698,7 +698,7 @@ public class Elastic8xWriter extends Writer {
             if (null != bulkIngester) {
                 try {
                     bulkIngester.close();
-                    LOG.debug("BulkIngester closed successfully / BulkIngester关闭成功");
+                    LOG.info("BulkIngester closed successfully / BulkIngester关闭成功");
                 } catch (Exception e) {
                     LOG.error("Failed to close BulkIngester / 关闭BulkIngester失败", e);
                 }
@@ -708,7 +708,7 @@ public class Elastic8xWriter extends Writer {
             if (null != restClient) {
                 try {
                     restClient.close();
-                    LOG.debug("ES8 client closed successfully / ES8客户端关闭成功");
+                    LOG.info("ES8 client closed successfully / ES8客户端关闭成功");
                 } catch (Exception e) {
                     LOG.error("Failed to close ES8 client / 关闭ES8客户端失败", e);
                 }
