@@ -73,7 +73,7 @@ public final class Elastic8xKey {
     /**
      * cleanUp
      */
-    static final String CLEANUP = "cleanup";
+    static final String CLEANUP = "cleanUp";
     /**
      * settings(index settings)
      */
