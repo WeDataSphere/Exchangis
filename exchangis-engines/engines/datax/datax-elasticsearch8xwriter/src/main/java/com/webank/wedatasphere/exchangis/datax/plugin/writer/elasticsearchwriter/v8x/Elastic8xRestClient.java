@@ -365,7 +365,9 @@ public class Elastic8xRestClient implements AutoCloseable {
             GetMappingResponse response = esClient.indices().getMapping(request);
             IndexMappingRecord mappingRecord = response.get(indexName);
             if (null != mappingRecord){
-                String mappingJson = JsonpUtils.toJsonString(mappingRecord, esClient._jsonpMapper());
+                // 先调用mappings()获取TypeMapping，再序列化为JSON
+                // First call mappings() to get TypeMapping, then serialize to JSON
+                String mappingJson = JsonpUtils.toJsonString(mappingRecord.mappings(), esClient._jsonpMapper());
                 Map<String, Object> mappingMap = Json.fromJson(mappingJson, Map.class);
                 if (null != mappingMap){
                     Object props = mappingMap.get(FIELD_PROPS);
