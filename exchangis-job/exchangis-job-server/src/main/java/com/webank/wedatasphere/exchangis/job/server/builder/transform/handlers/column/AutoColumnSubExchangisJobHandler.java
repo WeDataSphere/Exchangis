@@ -118,7 +118,8 @@ public abstract class AutoColumnSubExchangisJobHandler extends AbstractPartition
                     columnDefine.setIndex(metaColumn.getIndex());
                     columns.add(columnDefine);
                 }
-                if (ADD_PART_COLUMNS.getValue(paramSet)){
+                // 兼容处理：使用Boolean.TRUE.equals避免NPE / Use Boolean.TRUE.equals to avoid NPE
+                if (Boolean.TRUE.equals(ADD_PART_COLUMNS.getValue(paramSet))){
                     Map<String, String> getPartColumns = getPartColumns(paramSet, dsType);
                     getPartColumns.forEach((key, value) -> {
                         SubExchangisJob.ColumnDefine columnDefine = ColumnDefineUtils.getColumn(key, "STRING");
