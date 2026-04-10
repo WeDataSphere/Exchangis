@@ -37,9 +37,15 @@ public class SQLCommandUtils {
     private static String columnListSql(List<?> columns){
         StringBuilder builder = new StringBuilder();
         for(int i = 0; i < columns.size(); i++){
-            builder.append("`");
-            builder.append(columns.get(i));
-            builder.append("`");
+            String column = String.valueOf(columns.get(i));
+            // 如果是"*"，不添加反引号 / If "*", do not add backticks
+            if("*".equals(column)){
+                builder.append(column);
+            } else {
+                builder.append("`");
+                builder.append(column);
+                builder.append("`");
+            }
             if(i < columns.size() - 1){
                 builder.append(DEFAULT_COLUMN_SEPARATOR);
             }
