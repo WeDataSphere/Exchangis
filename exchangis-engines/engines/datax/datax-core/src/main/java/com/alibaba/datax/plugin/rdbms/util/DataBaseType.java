@@ -18,7 +18,9 @@ public enum DataBaseType {
     PostgreSQL("postgresql", "org.postgresql.Driver"),
     RDBMS("rdbms", "DataBaseType"),
     DB2("db2", "com.ibm.db2.jcc.DB2Driver"),
-    ADS("ads", "com.mysql.jdbc.Driver");
+    ADS("ads", "com.mysql.jdbc.Driver"),
+    /** 神州通用数据库（神通/Oscar），兼容Oracle SQL方言，JDBC驱动: com.oscar.Driver / Shenzhou database (Oscar), Oracle-compatible, JDBC driver: com.oscar.Driver */
+    Oscar("oscar", "com.oscar.Driver");
 
 
     private String typeName;
@@ -55,6 +57,8 @@ public enum DataBaseType {
             case PostgreSQL:
                 break;
             case RDBMS:
+                break;
+            case Oscar:
                 break;
             default:
                 throw DataXException.asDataXException(DBUtilErrorCode.UNSUPPORTED_TYPE, "unsupported database type.");
@@ -93,6 +97,8 @@ public enum DataBaseType {
                 break;
             case RDBMS:
                 break;
+            case Oscar:
+                break;
             default:
                 throw DataXException.asDataXException(DBUtilErrorCode.UNSUPPORTED_TYPE, "unsupported database type.");
         }
@@ -118,6 +124,11 @@ public enum DataBaseType {
             case DB2:
             case PostgreSQL:
                 break;
+            case Oscar:
+                if (splitPk.length() >= 2 && splitPk.startsWith("\"") && splitPk.endsWith("\"")) {
+                    result = splitPk.substring(1, splitPk.length() - 1).toLowerCase();
+                }
+                break;
             default:
                 throw DataXException.asDataXException(DBUtilErrorCode.UNSUPPORTED_TYPE, "unsupported database type.");
         }
@@ -141,6 +152,8 @@ public enum DataBaseType {
             case DB2:
             case PostgreSQL:
                 break;
+            case Oscar:
+                break;
             default:
                 throw DataXException.asDataXException(DBUtilErrorCode.UNSUPPORTED_TYPE, "unsupported database type");
         }
@@ -162,6 +175,8 @@ public enum DataBaseType {
             case DB2:
                 break;
             case PostgreSQL:
+                break;
+            case Oscar:
                 break;
             default:
                 throw DataXException.asDataXException(DBUtilErrorCode.UNSUPPORTED_TYPE, "unsupported database type");

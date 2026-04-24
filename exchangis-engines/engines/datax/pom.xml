@@ -47,6 +47,8 @@
         <module>datax-mysqlwriter</module>
         <module>datax-oraclereader</module>
         <module>datax-oraclewriter</module>
+        <module>datax-shenzhoureader</module>
+        <module>datax-shenzhouwriter</module>
         <module>datax-assembly</module>
     </modules>
     <dependencyManagement>
