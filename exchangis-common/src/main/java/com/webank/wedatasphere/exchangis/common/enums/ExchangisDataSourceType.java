@@ -16,7 +16,11 @@ public enum ExchangisDataSourceType {
 
     STARROCKS("STARROCKS", "大数据存储"),
 
-    TDSQL("TDSQL", "大数据存储");
+    TDSQL("TDSQL", "大数据存储"),
+
+    DB2("DB2", "关系型数据库"),
+
+    OSCAR("OSCAR", "关系型数据库");
 
     /**
      * Type name
