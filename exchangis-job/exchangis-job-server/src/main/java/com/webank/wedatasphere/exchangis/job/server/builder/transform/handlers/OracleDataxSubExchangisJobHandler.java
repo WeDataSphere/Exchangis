@@ -68,7 +68,7 @@ public class OracleDataxSubExchangisJobHandler extends AuthEnabledSubExchangisJo
             columns.add("*");
         }
         return SQLCommandUtils.contactSql(Collections.singletonList(sourceParams
-                .get(JobParamConstraints.TABLE).getValue()), null, columns, null, where);
+                .get(JobParamConstraints.TABLE).getValue()), null, columns, null, where, "\"");
     }, SubExchangisJob.class);
 
     /**

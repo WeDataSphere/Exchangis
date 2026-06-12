@@ -22,10 +22,17 @@ public class SQLCommandUtils {
     private static final String SQL_ON_CONDITION = " ON ";
     private static final String SQL_AND_CONDITION = " AND ";
 
+    private static final String DEFAULT_COLUMN_QUOTE = "`";
+
     public static String contactSql(List<?> tables, List<?> alias,
                               List<?> columns, List<?> joinInfo, String whereClause){
+        return contactSql(tables, alias, columns, joinInfo, whereClause, DEFAULT_COLUMN_QUOTE);
+    }
+
+    public static String contactSql(List<?> tables, List<?> alias,
+                              List<?> columns, List<?> joinInfo, String whereClause, String columnQuote){
         StringBuilder builder = new StringBuilder(SQL_SELECT_CONDITION)
-                .append(columnListSql(columns))
+                .append(columnListSql(columns, columnQuote))
                 .append(SQL_FROM_CONDITION)
                 .append(tableOnSql(tables, alias, joinInfo));
         if(StringUtils.isNotBlank(whereClause)){
@@ -34,17 +41,17 @@ public class SQLCommandUtils {
         return builder.toString();
     }
 
-    private static String columnListSql(List<?> columns){
+    private static String columnListSql(List<?> columns, String columnQuote){
         StringBuilder builder = new StringBuilder();
         for(int i = 0; i < columns.size(); i++){
             String column = String.valueOf(columns.get(i));
-            // 如果是"*"，不添加反引号 / If "*", do not add backticks
-            if("*".equals(column)){
+            // 如果是"*"，不添加包裹符 / If "*", do not add quote
+            if("*".equals(column) || StringUtils.isBlank(columnQuote)){
                 builder.append(column);
             } else {
-                builder.append("`");
+                builder.append(columnQuote);
                 builder.append(column);
-                builder.append("`");
+                builder.append(columnQuote);
             }
             if(i < columns.size() - 1){
                 builder.append(DEFAULT_COLUMN_SEPARATOR);
