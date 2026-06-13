@@ -32,6 +32,11 @@ public class HiveDataxParamsMapping extends AbstractExchangisJobParamsMapping{
 
     private static final String[] SINK_SUPPORT_FILETYPE = new String[]{"ORC", "TEXT"};
 
+    /**
+     * Default hive warehouse uri pattern when the table location is absent / 表 location 缺失时默认的 hive warehouse 路径模板
+     */
+    private static final String DEFAULT_HIVE_WAREHOUSE_PATTERN = "/user/hive/warehouse/${user}";
+
     private enum Type {
         /**
          * types that supported by <em>DataX</em>
@@ -228,7 +233,8 @@ public class HiveDataxParamsMapping extends AbstractExchangisJobParamsMapping{
      */
     private static final JobParamDefine<String> DATA_PATH = JobParams.define("path", paramSet -> {
         String[] location = DATA_LOCATION.getValue(paramSet);
-        if (StringUtils.isNotBlank(location[2])){
+        // If the original location is blank, do not return the constructed path / 原始 location 为空时，不返回构造的路径
+        if (StringUtils.isNotBlank(location[0]) && StringUtils.isNotBlank(location[2])){
             return location[2];
         }
         return null;
@@ -240,6 +246,13 @@ public class HiveDataxParamsMapping extends AbstractExchangisJobParamsMapping{
     private static final JobParamDefine<Map<String, String>> HADOOP_CONF = JobParams.define("hadoopConfig", paramSet -> {
         String[] location = DATA_LOCATION.getValue(paramSet);
         String uri = location[0];
+        // If the uri is absent, build it from the submit user with the default warehouse pattern
+        // uri 为空时，用提交用户通过默认 warehouse 模板生成
+        if (StringUtils.isBlank(uri)){
+            Object userName = getJobBuilderContext().getEnv("USER_NAME");
+            uri = PatternInjectUtils.inject(DEFAULT_HIVE_WAREHOUSE_PATTERN,
+                    Collections.singletonMap("user", Objects.nonNull(userName) ? userName : ""));
+        }
         try {
             // TODO get the other hdfs cluster with tab
             return Objects.requireNonNull(getBean(MetadataInfoService.class)).getLocalHdfsInfo(uri);
