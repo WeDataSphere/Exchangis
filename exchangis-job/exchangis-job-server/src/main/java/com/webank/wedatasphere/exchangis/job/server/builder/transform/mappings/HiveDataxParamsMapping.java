@@ -17,6 +17,7 @@ import java.net.URISyntaxException;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
+import java.util.function.Function;
 
 /**
  * Hive datax mapping
@@ -68,6 +69,13 @@ public class HiveDataxParamsMapping extends AbstractExchangisJobParamsMapping{
             CHAR_TO_ESCAPE.set(c);
         }
     }
+
+    /**
+     * Whether to auto create table / 是否自动建表
+     */
+    private static final JobParamDefine<Boolean> AUTO_CREATE_TABLE = JobParams.define(
+            "autoCreateTable", JobParamConstraints.AUTO_CREATE_TABLE,
+            (Function<String, Boolean>) Boolean::valueOf, String.class);
 
     /**
      * Hive database
@@ -125,6 +133,11 @@ public class HiveDataxParamsMapping extends AbstractExchangisJobParamsMapping{
                    Optional.ofNullable(dsOwner).orElse(getJobBuilderContext().getOriginalJob().getCreateUser()),
                     Long.valueOf(dataSourceId.getValue()), database, table);
         } catch (ExchangisDataSourceException e) {
+            // If autoCreateTable is enabled, swallow the query exception and return empty props / 开启自动建表时，吞掉查询异常并返回空信息
+            if (Boolean.TRUE.equals(AUTO_CREATE_TABLE.getValue(paramSet))){
+                warn("Fail to query table props for [{}.{}] (autoCreateTable=true, ignore it)", database, table, e);
+                return new HashMap<>();
+            }
             throw new ExchangisJobException.Runtime(e.getErrCode(), e.getMessage(), e.getCause());
         }
     });
@@ -152,7 +165,12 @@ public class HiveDataxParamsMapping extends AbstractExchangisJobParamsMapping{
             Optional.ofNullable(tableProps.get("file.outputformat")).ifPresent(outputFormat -> fileType
                     .set(HiveV2FileType.output(outputFormat)));
         }
-        return Objects.nonNull(fileType.get())? fileType.get() : HiveV2FileType.TEXT;
+        if (Objects.nonNull(fileType.get())){
+            return fileType.get();
+        }
+        // If no suitable file type found, default to ORC when autoCreateTable is enabled, otherwise TEXT
+        // 未找到合适的文件类型时，开启自动建表则默认 ORC(自动创建 ORC 表)，否则 TEXT
+        return Boolean.TRUE.equals(AUTO_CREATE_TABLE.getValue(paramSet)) ? HiveV2FileType.ORC : HiveV2FileType.TEXT;
     });
 
     /**
@@ -221,11 +239,16 @@ public class HiveDataxParamsMapping extends AbstractExchangisJobParamsMapping{
      */
     private static final JobParamDefine<Map<String, String>> HADOOP_CONF = JobParams.define("hadoopConfig", paramSet -> {
         String[] location = DATA_LOCATION.getValue(paramSet);
+        String uri = location[0];
         try {
-            String uri = location[0];
             // TODO get the other hdfs cluster with tab
             return Objects.requireNonNull(getBean(MetadataInfoService.class)).getLocalHdfsInfo(uri);
         } catch (ExchangisDataSourceException e) {
+            // If autoCreateTable is enabled, swallow the exception and return empty hadoop config / 开启自动建表时降级返回空配置
+            if (Boolean.TRUE.equals(AUTO_CREATE_TABLE.getValue(paramSet))){
+                warn("Fail to query local hdfs info for uri [{}] (autoCreateTable=true, ignore it)", uri, e);
+                return new HashMap<>();
+            }
             throw new ExchangisJobException.Runtime(e.getErrCode(), e.getDesc(), e.getCause());
         }
     });

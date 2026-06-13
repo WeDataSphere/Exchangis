@@ -54,6 +54,11 @@ public class JobParamConstraints {
 
     public static final String PARTITION = "partition";
 
+    /**
+     * Whether to auto create the table if the table does not exist / 表不存在时是否自动建表
+     */
+    public static final String AUTO_CREATE_TABLE = "autoCreateTable";
+
     public static final String SETTINGS_MAX_PARALLEL = "setting.max.parallelism";
 
 }

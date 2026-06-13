@@ -11,6 +11,7 @@ import com.webank.wedatasphere.exchangis.job.exception.ExchangisJobException;
 import com.webank.wedatasphere.exchangis.job.server.builder.JobParamConstraints;
 
 import java.util.*;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 
 /**
@@ -35,6 +36,13 @@ public abstract class AbstractPartitionedSubExchangisJobHandler extends AuthEnab
     public static final JobParamDefine<Map<String, String>> TABLE_PARTITION = JobParams.define(JobParamConstraints.PARTITION);
 
     /**
+     * Whether to auto create table / 是否自动建表
+     */
+    protected static final JobParamDefine<Boolean> AUTO_CREATE_TABLE = JobParams.define(
+            "autoCreateTable", JobParamConstraints.AUTO_CREATE_TABLE,
+            (Function<String, Boolean>) Boolean::valueOf, String.class);
+
+    /**
      * Partition keys
      */
     protected static final JobParamDefine<List<String>> PARTITION_KEYS = JobParams.define("partitionKeys", paramSet -> {
@@ -55,7 +63,16 @@ public abstract class AbstractPartitionedSubExchangisJobHandler extends AuthEnab
                     Optional.ofNullable(dsOwner).orElse(getJobBuilderContext().getOriginalJob().getCreateUser()),
                     Long.parseLong(dataSourceId.getValue()), database, table);
         } catch (ExchangisDataSourceException e) {
-            throw new ExchangisJobException.Runtime(e.getErrCode(), e.getMessage(), e.getCause());
+            // If autoCreateTable is enabled, swallow the query exception and use the keys from TABLE_PARTITION / 开启自动建表时降级：从 TABLE_PARTITION 取分区键
+            if (Boolean.TRUE.equals(AUTO_CREATE_TABLE.getValue(paramSet))){
+                warn("Fail to query partition keys for [{}.{}] (autoCreateTable=true, use keys from table partition)", database, table, e);
+                Map<String, String> tablePartition = TABLE_PARTITION.getValue(paramSet);
+                if (Objects.nonNull(tablePartition)){
+                    partitionKeys = new ArrayList<>(tablePartition.keySet());
+                }
+            } else {
+                throw new ExchangisJobException.Runtime(e.getErrCode(), e.getMessage(), e.getCause());
+            }
         }
         return partitionKeys;
     });
