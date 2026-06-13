@@ -25,4 +25,19 @@ public class ExchangisDataSourceConfiguration {
      */
     public static final CommonVars<String> DWS_VERSION = CommonVars.apply("wds.exchangis.datasource.client.dws.version",
             ClientConfiguration.LINKIS_DWS_VERSION.getValue());
+
+    /**
+     * Whether to enable kerberos authentication / 是否开启 kerberos 认证
+     */
+    public static final CommonVars<Boolean> KERBEROS_ENABLE = CommonVars.apply("wds.exchangis.datasource.kerberos.enable", false);
+
+    /**
+     * Kerberos realm / Kerberos 域
+     */
+    public static final CommonVars<String> KERBEROS_REALM = CommonVars.apply("wds.exchangis.datasource.kerberos.realm", "EXAMPLE.COM");
+
+    /**
+     * Kerberos keytab path, default "_local" means to use the local keytab on engine side / Kerberos keytab 路径，默认 _local 表示使用 engine 侧本地 keytab
+     */
+    public static final CommonVars<String> KERBEROS_KEYTAB_PATH = CommonVars.apply("wds.exchangis.datasource.kerberos.keytab.path", "_local");
 }

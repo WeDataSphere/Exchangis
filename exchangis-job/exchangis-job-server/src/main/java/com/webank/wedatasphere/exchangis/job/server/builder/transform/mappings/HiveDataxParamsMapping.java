@@ -2,6 +2,7 @@ package com.webank.wedatasphere.exchangis.job.server.builder.transform.mappings;
 
 import com.webank.wedatasphere.exchangis.common.config.GlobalConfiguration;
 import com.webank.wedatasphere.exchangis.common.util.PatternInjectUtils;
+import com.webank.wedatasphere.exchangis.datasource.core.ExchangisDataSourceConfiguration;
 import com.webank.wedatasphere.exchangis.datasource.core.exception.ExchangisDataSourceException;
 import com.webank.wedatasphere.exchangis.datasource.core.service.MetadataInfoService;
 import com.webank.wedatasphere.exchangis.job.domain.SubExchangisJob;
@@ -267,6 +268,44 @@ public class HiveDataxParamsMapping extends AbstractExchangisJobParamsMapping{
     });
 
     /**
+     * Whether the hadoop cluster enables kerberos authentication / Hadoop 集群是否开启 kerberos 认证
+     */
+    private static final String KERBEROS_AUTH_KEY = "hadoop.security.authentication";
+
+    private static final JobParamDefine<Boolean> HAVE_KERBEROS = JobParams.define("haveKerberos", paramSet -> {
+        // KERBEROS_ENABLE is on AND hadoop.security.authentication == kerberos
+        // KERBEROS_ENABLE 开启 且 hadoopConfig 中 hadoop.security.authentication 为 kerberos
+        if (!Boolean.TRUE.equals(ExchangisDataSourceConfiguration.KERBEROS_ENABLE.getValue())){
+            return false;
+        }
+        Map<String, String> hadoopConf = HADOOP_CONF.getValue(paramSet);
+        return Objects.nonNull(hadoopConf) && "kerberos".equalsIgnoreCase(hadoopConf.get(KERBEROS_AUTH_KEY));
+    });
+
+    /**
+     * Kerberos principal (submitUser@REALM) / Kerberos 主体（提交用户@域）
+     */
+    private static final JobParamDefine<String> KERBEROS_PRINCIPAL = JobParams.define("kerberosPrincipal", paramSet -> {
+        if (!Boolean.TRUE.equals(HAVE_KERBEROS.getValue(paramSet))){
+            return null;
+        }
+        Object userName = getJobBuilderContext().getEnv("USER_NAME");
+        String user = Objects.nonNull(userName) ? String.valueOf(userName) : "";
+        return user + "@" + ExchangisDataSourceConfiguration.KERBEROS_REALM.getValue();
+    });
+
+    /**
+     * Kerberos keytab path / Kerberos keytab 路径
+     */
+    private static final JobParamDefine<String> KERBEROS_KEYTAB_PATH = JobParams.define("kerberosKeytabPath", paramSet -> {
+        if (!Boolean.TRUE.equals(HAVE_KERBEROS.getValue(paramSet))){
+            return null;
+        }
+        // Prefer the configured value, otherwise default to "_local" / 优先取配置，否则默认 _local
+        return ExchangisDataSourceConfiguration.KERBEROS_KEYTAB_PATH.getValue();
+    });
+
+    /**
      * To "defaultFS"
      */
     private static final JobParamDefine<String> DEFAULT_FS = JobParams.define("defaultFS", paramSet ->
@@ -327,13 +366,14 @@ public class HiveDataxParamsMapping extends AbstractExchangisJobParamsMapping{
     public JobParamDefine<?>[] sourceMappings() {
         return new JobParamDefine[]{HIVE_DATABASE, HIVE_TABLE, ENCODING,
         NULL_FORMAT, PARTITION_VALUES, FIELD_DELIMITER, FILE_TYPE, DATA_PATH, HADOOP_CONF, DEFAULT_FS,
-                IS_SOURCE_FILETYPE_SUPPORT};
+                HAVE_KERBEROS, KERBEROS_PRINCIPAL, KERBEROS_KEYTAB_PATH, IS_SOURCE_FILETYPE_SUPPORT};
     }
 
     @Override
     public JobParamDefine<?>[] sinkMappings() {
         return new JobParamDefine[]{HIVE_DATABASE, HIVE_TABLE, ENCODING,
                 NULL_FORMAT, PARTITION_VALUES, FIELD_DELIMITER, FILE_TYPE, DATA_PATH, HADOOP_CONF, DEFAULT_FS,
+                HAVE_KERBEROS, KERBEROS_PRINCIPAL, KERBEROS_KEYTAB_PATH,
                 COMPRESS_NAME, IS_SINK_FILETYPE_SUPPORT, HIVE_URIS, DATA_FILE_NAME};
     }
 
