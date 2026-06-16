@@ -109,7 +109,21 @@ public abstract class AutoColumnSubExchangisJobHandler extends AbstractPartition
      * @param columns columns
      */
     protected void doFillColumns(JobParamSet paramSet, String dsType, List<SubExchangisJob.ColumnDefine> columns){
-        List<MetaColumn> metaColumns = getMetaColumns(paramSet);
+        List<MetaColumn> metaColumns = new ArrayList<>();
+        try {
+            metaColumns = getMetaColumns(paramSet);
+        } catch (Exception e){
+            if (!Boolean.TRUE.equals(AUTO_CREATE_TABLE.getValue(paramSet))){
+                if (e instanceof ExchangisJobException.Runtime){
+                    throw e;
+                } else if (e instanceof ExchangisDataSourceException){
+                    throw new ExchangisJobException.Runtime(((ExchangisDataSourceException) e).getErrCode(), e.getMessage(), e.getCause());
+                } else {
+                    throw new ExchangisJobException.Runtime(-1, e.getMessage(), e.getCause());
+                }
+            }
+            // Ignore the exception
+        }
         if (Objects.nonNull(metaColumns) && !metaColumns.isEmpty()){
             if (columns.size() <= 0){
                 for(MetaColumn metaColumn : metaColumns){
@@ -138,6 +152,13 @@ public abstract class AutoColumnSubExchangisJobHandler extends AbstractPartition
                     return partColumns;
                 });
             }
+        } else if (!columns.isEmpty()){
+            // change the [Auto] to string
+            columns.forEach(columnDefine -> {
+                if (AUTO_TYPE.equals(columnDefine.getType())){
+                    columnDefine.setType("string");
+                }
+            });
         }
     }
 
