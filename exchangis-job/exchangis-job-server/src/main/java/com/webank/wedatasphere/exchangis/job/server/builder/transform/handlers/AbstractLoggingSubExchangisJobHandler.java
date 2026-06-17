@@ -122,6 +122,14 @@ public abstract class AbstractLoggingSubExchangisJobHandler implements SubExchan
     }
 
     /**
+     * Trace message
+     * @param message message
+     */
+    public static void trace(String message, Object... args){
+        Optional.ofNullable(springContext.get()).ifPresent(ctx -> ctx.getLogging().trace(null, message, args));
+    }
+
+    /**
      * Warn message
      * @param message message
      */

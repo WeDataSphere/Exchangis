@@ -39,8 +39,13 @@ public abstract class AbstractPartitionedSubExchangisJobHandler extends AuthEnab
      * Whether to auto create table / 是否自动建表
      */
     protected static final JobParamDefine<Boolean> AUTO_CREATE_TABLE = JobParams.define(
-            "autoCreateTable", JobParamConstraints.AUTO_CREATE_TABLE,
-            (Function<String, Boolean>) Boolean::valueOf, String.class);
+            JobParamConstraints.AUTO_CREATE_TABLE, paramSet -> {
+               JobParam<String> autoCreate =  paramSet.get(JobParamConstraints.AUTO_CREATE_TABLE);
+               if (null != autoCreate){
+                    return Boolean.parseBoolean(autoCreate.getValue());
+               }
+               return false;
+            });
 
     /**
      * Partition keys
@@ -65,7 +70,7 @@ public abstract class AbstractPartitionedSubExchangisJobHandler extends AuthEnab
         } catch (ExchangisDataSourceException e) {
             // If autoCreateTable is enabled, swallow the query exception and use the keys from TABLE_PARTITION / 开启自动建表时降级：从 TABLE_PARTITION 取分区键
             if (Boolean.TRUE.equals(AUTO_CREATE_TABLE.getValue(paramSet))){
-                warn("Fail to query partition keys for [{}.{}] (autoCreateTable=true, use keys from table partition)", database, table, e);
+                trace("Fail to query partition keys for [{}.{}] (autoCreateTable=true, use keys from table partition)", database, table, e);
                 Map<String, String> tablePartition = TABLE_PARTITION.getValue(paramSet);
                 if (Objects.nonNull(tablePartition)){
                     partitionKeys = new ArrayList<>(tablePartition.keySet());

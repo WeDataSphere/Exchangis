@@ -12,6 +12,7 @@ import com.webank.wedatasphere.exchangis.job.domain.params.JobParams;
 import com.webank.wedatasphere.exchangis.job.exception.ExchangisJobException;
 import com.webank.wedatasphere.exchangis.job.server.builder.JobParamConstraints;
 import org.apache.commons.lang3.StringUtils;
+import org.apache.linkis.common.conf.CommonVars;
 
 import java.net.URI;
 import java.net.URISyntaxException;
@@ -36,7 +37,7 @@ public class HiveDataxParamsMapping extends AbstractExchangisJobParamsMapping{
     /**
      * Default hive warehouse uri pattern when the table location is absent / 表 location 缺失时默认的 hive warehouse 路径模板
      */
-    private static final String DEFAULT_HIVE_WAREHOUSE_PATTERN = "/user/hive/warehouse/${user}";
+    private static final CommonVars<String> HIVE_WAREHOUSE_PATTERN = CommonVars.apply("wds.exchangis.job.builder.hive.warehouse", "/user/hive/warehouse/${user}");
 
     private enum Type {
         /**
@@ -141,7 +142,7 @@ public class HiveDataxParamsMapping extends AbstractExchangisJobParamsMapping{
         } catch (ExchangisDataSourceException e) {
             // If autoCreateTable is enabled, swallow the query exception and return empty props / 开启自动建表时，吞掉查询异常并返回空信息
             if (Boolean.TRUE.equals(AUTO_CREATE_TABLE.getValue(paramSet))){
-                warn("Fail to query table props for [{}.{}] (autoCreateTable=true, ignore it)", database, table, e);
+                trace("Fail to query table props for [{}.{}] (autoCreateTable=true, ignore it)", database, table, e);
                 return new HashMap<>();
             }
             throw new ExchangisJobException.Runtime(e.getErrCode(), e.getMessage(), e.getCause());
@@ -251,7 +252,7 @@ public class HiveDataxParamsMapping extends AbstractExchangisJobParamsMapping{
         // uri 为空时，用提交用户通过默认 warehouse 模板生成
         if (StringUtils.isBlank(uri)){
             Object userName = getJobBuilderContext().getEnv("USER_NAME");
-            uri = PatternInjectUtils.inject(DEFAULT_HIVE_WAREHOUSE_PATTERN,
+            uri = PatternInjectUtils.inject(HIVE_WAREHOUSE_PATTERN.getValue(),
                     Collections.singletonMap("user", Objects.nonNull(userName) ? userName : ""));
         }
         try {
@@ -260,7 +261,7 @@ public class HiveDataxParamsMapping extends AbstractExchangisJobParamsMapping{
         } catch (ExchangisDataSourceException e) {
             // If autoCreateTable is enabled, swallow the exception and return empty hadoop config / 开启自动建表时降级返回空配置
             if (Boolean.TRUE.equals(AUTO_CREATE_TABLE.getValue(paramSet))){
-                warn("Fail to query local hdfs info for uri [{}] (autoCreateTable=true, ignore it)", uri, e);
+                trace("Fail to query local hdfs info for uri [{}] (autoCreateTable=true, ignore it)", uri, e);
                 return new HashMap<>();
             }
             throw new ExchangisJobException.Runtime(e.getErrCode(), e.getDesc(), e.getCause());
@@ -371,7 +372,7 @@ public class HiveDataxParamsMapping extends AbstractExchangisJobParamsMapping{
 
     @Override
     public JobParamDefine<?>[] sinkMappings() {
-        return new JobParamDefine[]{HIVE_DATABASE, HIVE_TABLE, ENCODING,
+        return new JobParamDefine[]{HIVE_DATABASE, HIVE_TABLE, ENCODING, AUTO_CREATE_TABLE,
                 NULL_FORMAT, PARTITION_VALUES, FIELD_DELIMITER, FILE_TYPE, DATA_PATH, HADOOP_CONF, DEFAULT_FS,
                 HAVE_KERBEROS, KERBEROS_PRINCIPAL, KERBEROS_KEYTAB_PATH,
                 COMPRESS_NAME, IS_SINK_FILETYPE_SUPPORT, HIVE_URIS, DATA_FILE_NAME};
