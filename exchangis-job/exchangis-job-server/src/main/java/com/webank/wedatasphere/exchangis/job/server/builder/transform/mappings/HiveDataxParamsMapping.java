@@ -149,6 +149,34 @@ public class HiveDataxParamsMapping extends AbstractExchangisJobParamsMapping{
         }
     });
 
+    /**
+     * Database properties (query with empty table to get the database-level props) / 数据库属性（table 传空串，获取库级属性）
+     */
+    private static final JobParamDefine<Map<String, String>> HIVE_DB_PROPS = JobParams.define("dbProps", paramSet -> {
+        String database = HIVE_DATABASE.getValue(paramSet);
+        JobParam<String> dataSourceId = paramSet.get(JobParamConstraints.DATA_SOURCE_ID);
+        JobParam<String> dsCreator = paramSet.get(JobParamConstraints.DATA_SOURCE_CREATOR);
+        String dsOwner = Objects.nonNull(dsCreator) ? dsCreator.getValue() : GlobalConfiguration.getAdminUser();
+        try {
+            return Objects.requireNonNull(getBean(MetadataInfoService.class)).getTableProps(
+                    Optional.ofNullable(dsOwner).orElse(getJobBuilderContext().getOriginalJob().getCreateUser()),
+                    Long.valueOf(dataSourceId.getValue()), database, "");
+        } catch (ExchangisDataSourceException e) {
+            // If autoCreateTable is enabled, swallow the query exception and return empty props / 开启自动建表时，吞掉查询异常并返回空信息
+            if (Boolean.TRUE.equals(AUTO_CREATE_TABLE.getValue(paramSet))){
+                trace("Fail to query database props for [{}] (autoCreateTable=true, ignore it)", database, e);
+                return new HashMap<>();
+            }
+            throw new ExchangisJobException.Runtime(e.getErrCode(), e.getMessage(), e.getCause());
+        }
+    });
+
+    /**
+     * Database location (taken from the database-level props, empty if absent) / 库级 location，从 HIVE_DB_PROPS 取，没有则为空
+     */
+    private static final JobParamDefine<String> DB_LOCATION = JobParams.define("dbLocation", paramSet ->
+            HIVE_DB_PROPS.getValue(paramSet).getOrDefault("location", ""));
+
 
     /**
      * Field delimiter
@@ -248,8 +276,11 @@ public class HiveDataxParamsMapping extends AbstractExchangisJobParamsMapping{
     private static final JobParamDefine<Map<String, String>> HADOOP_CONF = JobParams.define("hadoopConfig", paramSet -> {
         String[] location = DATA_LOCATION.getValue(paramSet);
         String uri = location[0];
-        // If the uri is absent, build it from the submit user with the default warehouse pattern
-        // uri 为空时，用提交用户通过默认 warehouse 模板生成
+        // If the table location is absent, first try the database location, then fall back to the default warehouse pattern
+        // 表 location 为空时，先尝试库级 location，仍为空再用提交用户通过默认 warehouse 模板生成
+        if (StringUtils.isBlank(uri)){
+            uri = DB_LOCATION.getValue(paramSet);
+        }
         if (StringUtils.isBlank(uri)){
             Object userName = getJobBuilderContext().getEnv("USER_NAME");
             uri = PatternInjectUtils.inject(HIVE_WAREHOUSE_PATTERN.getValue(),
