@@ -15,6 +15,8 @@ import org.apache.linkis.scheduler.queue.JobInfo;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.HashMap;
+import java.util.Map;
 import java.util.Objects;
 
 /**
@@ -54,8 +56,9 @@ public class StatusUpdateSchedulerTask extends AbstractLoadBalanceSchedulerTask<
                     // Use failed status instead of wait for retry
                     status = TaskStatus.Failed;
                 }
+                Map<String, Object> metricsInfo = launcherTask.getMetricsInfo();
                 this.taskManager.refreshRunningTaskStatusAndMetrics(launchedExchangisTask,
-                        status, launcherTask.getMetricsInfo());
+                        status, Objects.isNull(metricsInfo) ? null : new HashMap<>(metricsInfo));
             } else {
                 this.taskManager.refreshRunningTaskStatus(launchedExchangisTask, status);
             }

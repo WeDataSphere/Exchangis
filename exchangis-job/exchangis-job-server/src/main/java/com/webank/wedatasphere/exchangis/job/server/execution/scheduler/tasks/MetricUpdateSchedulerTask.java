@@ -13,6 +13,7 @@ import org.apache.linkis.scheduler.queue.JobInfo;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
 
@@ -22,6 +23,11 @@ import java.util.Objects;
 public class MetricUpdateSchedulerTask extends AbstractLoadBalanceSchedulerTask<LaunchedExchangisTask> {
 
     private static final Logger LOG = LoggerFactory.getLogger(MetricUpdateSchedulerTask.class);
+
+    /**
+     * Error report name
+     */
+    public static final CommonVars<String> METRIC_ERROR_REPORT_NAME = CommonVars.apply("wds.exchangis.job.scheduler.task.metric.error.report.name", "errorReport");
 
     private static final CommonVars<Long> METRIC_UPDATE_INTERVAL = CommonVars.apply("wds.exchangis.job.scheduler.task.metric.update.interval-in-millis", 3000L);
 
@@ -47,7 +53,7 @@ public class MetricUpdateSchedulerTask extends AbstractLoadBalanceSchedulerTask<
         try {
             Map<String, Object> metricsInfo = launcherTask.getMetricsInfo();
             if (Objects.nonNull(metricsInfo)){
-                taskManager.refreshRunningTaskMetrics(launchedExchangisTask, metricsInfo);
+                taskManager.refreshRunningTaskMetrics(launchedExchangisTask, new HashMap<>(metricsInfo));
             }
         } catch (ExchangisTaskLaunchException e) {
             throw new ExchangisSchedulerException("Fail to get metrics information for task: [" + launchedExchangisTask.getTaskId() + "]", e);

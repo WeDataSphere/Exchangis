@@ -7,7 +7,9 @@ import com.webank.wedatasphere.exchangis.job.launcher.domain.task.TaskStatus;
 import com.webank.wedatasphere.exchangis.job.listener.events.JobLogEvent;
 import com.webank.wedatasphere.exchangis.job.exception.ExchangisTaskExecuteException;
 import com.webank.wedatasphere.exchangis.job.server.execution.events.*;
+import com.webank.wedatasphere.exchangis.job.server.execution.scheduler.tasks.MetricUpdateSchedulerTask;
 import com.webank.wedatasphere.exchangis.job.server.log.cache.JobLogCacheUtils;
+import org.apache.commons.lang3.StringUtils;
 
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
@@ -124,12 +126,19 @@ public abstract class AbstractTaskManager implements TaskManager<LaunchedExchang
             task = context.task;
             LaunchedExchangisTask finalTask = task;
             context.access( () -> {
+                String errorMessage = "";
                 if (Objects.nonNull(metricsMap)){
+                    errorMessage = extractErrorMessage(metricsMap.get(MetricUpdateSchedulerTask.METRIC_ERROR_REPORT_NAME.getValue()));
                     refreshRunningTaskMetrics(context, metricsMap);
                 }
                 if (TaskStatus.isCompleted(status)){
-                    info(finalTask, "Status of task: [name: {}, id: {}] change {} => {}",
-                            finalTask.getName(), finalTask.getTaskId(), beforeStatus, status);
+                    if (StringUtils.isNotBlank(errorMessage)){
+                        error(finalTask, "Status of task: [name: {}, id: {}] change {} => {}, failed reason (错误原因): {}",
+                                finalTask.getName(), finalTask.getTaskId(), beforeStatus, status, errorMessage);
+                    } else {
+                        info(finalTask, "Status of task: [name: {}, id: {}] change {} => {}",
+                                finalTask.getName(), finalTask.getTaskId(), beforeStatus, status);
+                    }
                     onEvent(new TaskStatusUpdateEvent(finalTask, status));
                     removeRunningTaskInner(finalTask.getTaskId(), false);
                 } else {
@@ -188,12 +197,47 @@ public abstract class AbstractTaskManager implements TaskManager<LaunchedExchang
         LaunchedExchangisTask finalTask = context.task;
         context.access(() -> {
             if (!TaskStatus.isCompleted(finalTask.getStatus())) {
+                // Remove the error report metrics before persisting, so that the errorReport
+                // will not be written into the metrics TEXT column (在持久化前移除异常上报指标，
+                // 避免将 errorReport 写入 metrics TEXT 字段)
+                metricsMap.remove(MetricUpdateSchedulerTask.METRIC_ERROR_REPORT_NAME.getValue());
                 onEvent(new TaskMetricsUpdateEvent(finalTask, metricsMap));
                 finalTask.setMetrics(null);
                 finalTask.setMetricsMap(metricsMap);
                 trace(finalTask, "Metrics info of task: [{}]", Json.toJson(metricsMap, null));
             }
         });
+    }
+
+    /**
+     * Extract the error message from the error report metric value.
+     * The error report is usually a String (flattened from the message list on engine side),
+     * but for compatibility also handle the List case (only take the first non-blank element)
+     * (从异常上报指标值中提取错误信息，通常为字符串；兼容列表类型，仅取第一个非空元素)
+     *
+     * @param errorReport error report value
+     * @return error message, empty string if absent or blank
+     */
+    private String extractErrorMessage(Object errorReport){
+        if (Objects.isNull(errorReport)){
+            return "";
+        }
+        if (errorReport instanceof String){
+            return StringUtils.trimToEmpty((String) errorReport);
+        }
+        if (errorReport instanceof List){
+            for (Object item : (List<?>) errorReport){
+                if (Objects.nonNull(item)){
+                    String message = StringUtils.trimToEmpty(String.valueOf(item));
+                    if (StringUtils.isNotBlank(message) && !"null".equals(message)){
+                        return message;
+                    }
+                }
+            }
+            // Empty list or all elements are blank/null
+            return "";
+        }
+        return StringUtils.trimToEmpty(String.valueOf(errorReport));
     }
 
     /**
