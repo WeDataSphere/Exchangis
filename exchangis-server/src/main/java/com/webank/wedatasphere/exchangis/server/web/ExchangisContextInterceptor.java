@@ -1,6 +1,7 @@
 package com.webank.wedatasphere.exchangis.server.web;
 
 import org.apache.commons.lang3.StringUtils;
+import org.apache.linkis.server.Message;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -9,6 +10,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.servlet.ModelAndView;
 
 import com.webank.wedatasphere.exchangis.common.config.GlobalConfiguration;
+import com.webank.wedatasphere.exchangis.common.util.json.Json;
 
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
@@ -36,6 +38,12 @@ public class ExchangisContextInterceptor implements ExchangisHandlerInterceptor 
      */
     public static final String ROUTE_HEADER = "X-Exchangis-Route";
 
+    /**
+     * 环境未就绪时的错误提示 (error message when environment is not ready)
+     */
+    private static final String ENV_NOT_READY_MSG =
+            "Environment is not loaded, please retry later (环境未成功加载，请稍后重试)";
+
     @Override
     public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler)
             throws Exception {
@@ -45,10 +53,25 @@ public class ExchangisContextInterceptor implements ExchangisHandlerInterceptor 
             String serverRoute = GlobalConfiguration.SERVER_ROUTE_LABEL.getValue();
             LOG.warn("preHandle reject: route mismatch for {} (route 校验拒绝: 请求={}, 本实例={}, 路径={})",
                     request.getRequestURI(), requestRoute, serverRoute, request.getRequestURI());
-            response.setStatus(HttpServletResponse.SC_FORBIDDEN);
+            // HTTP 503：服务暂不可用；Message status=1(ERROR)，与现有接口错误格式一致，不触发前端登录跳转
+            // HTTP 503 service unavailable; Message status=1(ERROR), same format as existing error responses
+            writeErrorResponse(response, HttpServletResponse.SC_SERVICE_UNAVAILABLE, ENV_NOT_READY_MSG);
             return false;
         }
         return true;
+    }
+
+    /**
+     * 将错误以 Message 格式（application/json;charset=UTF-8）写入 response body (write error as Message JSON)
+     */
+    private void writeErrorResponse(HttpServletResponse response, int httpStatus, String message) throws Exception {
+        Message msg = Message.error(message);
+        // Message.error 默认 status=1(ERROR)，与现有 controller 错误响应格式一致
+        String body = Json.toJson(msg, null);
+        response.setStatus(httpStatus);
+        response.setHeader("Content-Type", "application/json;charset=UTF-8");
+        response.getOutputStream().print(body);
+        response.getOutputStream().flush();
     }
 
     /**
