@@ -55,7 +55,19 @@ export const request = {
       message.error(error?.response?.data?.message || error?.data?.message ||  "系统异常");
     },
   },
-  timeout: 30000
+  timeout: 30000,
+  // 统一注入 route label 到请求头，供后端 ExchangisContextInterceptor 做环境二次校验
+  // inject route label into request header for server-side env re-check
+  requestInterceptors: [
+    (config) => {
+      const route = localStorage.getItem('exchangis_environment') || '';
+      if (route) {
+        config.headers = config.headers || {};
+        config.headers['X-Exchangis-Route'] = route;
+      }
+      return config;
+    },
+  ],
 };
 
 // 这里 自定义注册header
