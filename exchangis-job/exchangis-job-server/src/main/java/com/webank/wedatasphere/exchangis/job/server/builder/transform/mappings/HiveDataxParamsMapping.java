@@ -160,7 +160,7 @@ public class HiveDataxParamsMapping extends AbstractExchangisJobParamsMapping{
         try {
             return Objects.requireNonNull(getBean(MetadataInfoService.class)).getTableProps(
                     Optional.ofNullable(dsOwner).orElse(getJobBuilderContext().getOriginalJob().getCreateUser()),
-                    Long.valueOf(dataSourceId.getValue()), database, "");
+                    Long.valueOf(dataSourceId.getValue()), database, "__DB_DEFAULT__");
         } catch (ExchangisDataSourceException e) {
             // If autoCreateTable is enabled, swallow the query exception and return empty props / 开启自动建表时，吞掉查询异常并返回空信息
             if (Boolean.TRUE.equals(AUTO_CREATE_TABLE.getValue(paramSet))){
