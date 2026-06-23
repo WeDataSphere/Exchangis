@@ -142,7 +142,7 @@ public class HiveDataxParamsMapping extends AbstractExchangisJobParamsMapping{
         } catch (ExchangisDataSourceException e) {
             // If autoCreateTable is enabled, swallow the query exception and return empty props / 开启自动建表时，吞掉查询异常并返回空信息
             if (Boolean.TRUE.equals(AUTO_CREATE_TABLE.getValue(paramSet))){
-                trace("Fail to query table props for [{}.{}] (autoCreateTable=true, ignore it)", database, table, e);
+                debug("Fail to query table props for [{}.{}] (autoCreateTable=true, ignore it)", database, table, e);
                 return new HashMap<>();
             }
             throw new ExchangisJobException.Runtime(e.getErrCode(), e.getMessage(), e.getCause());
@@ -164,7 +164,7 @@ public class HiveDataxParamsMapping extends AbstractExchangisJobParamsMapping{
         } catch (ExchangisDataSourceException e) {
             // If autoCreateTable is enabled, swallow the query exception and return empty props / 开启自动建表时，吞掉查询异常并返回空信息
             if (Boolean.TRUE.equals(AUTO_CREATE_TABLE.getValue(paramSet))){
-                trace("Fail to query database props for [{}] (autoCreateTable=true, ignore it)", database, e);
+                debug("Fail to query database props for [{}] (autoCreateTable=true, ignore it)", database, e);
                 return new HashMap<>();
             }
             throw new ExchangisJobException.Runtime(e.getErrCode(), e.getMessage(), e.getCause());
@@ -292,7 +292,7 @@ public class HiveDataxParamsMapping extends AbstractExchangisJobParamsMapping{
         } catch (ExchangisDataSourceException e) {
             // If autoCreateTable is enabled, swallow the exception and return empty hadoop config / 开启自动建表时降级返回空配置
             if (Boolean.TRUE.equals(AUTO_CREATE_TABLE.getValue(paramSet))){
-                trace("Fail to query local hdfs info for uri [{}] (autoCreateTable=true, ignore it)", uri, e);
+                debug("Fail to query local hdfs info for uri [{}] (autoCreateTable=true, ignore it)", uri, e);
                 return new HashMap<>();
             }
             throw new ExchangisJobException.Runtime(e.getErrCode(), e.getDesc(), e.getCause());

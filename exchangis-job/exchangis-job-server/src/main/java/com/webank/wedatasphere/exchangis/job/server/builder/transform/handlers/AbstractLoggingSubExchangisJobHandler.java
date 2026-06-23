@@ -122,11 +122,13 @@ public abstract class AbstractLoggingSubExchangisJobHandler implements SubExchan
     }
 
     /**
-     * Trace message
+     * Debug message (used for autoCreateTable degrade logs, does not notify JobLogListener
+     * to avoid being pushed as INFO to job instance log) / 调试日志（用于 autoCreateTable 降级，
+     * 不触发 JobLogListener，避免按 INFO 推送到 job 实例日志）
      * @param message message
      */
-    public static void trace(String message, Object... args){
-        Optional.ofNullable(springContext.get()).ifPresent(ctx -> ctx.getLogging().trace(null, message, args));
+    public static void debug(String message, Object... args){
+        Optional.ofNullable(springContext.get()).ifPresent(ctx -> ctx.getLogging().debug(null, message, args));
     }
 
     /**

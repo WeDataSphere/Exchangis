@@ -29,6 +29,16 @@ public interface JobServerLogging<T> {
         }
     }
 
+    default void debug(T entity, String message, Object... args){
+        Logger logger = getLogger();
+        if (Objects.nonNull(logger) && logger.isDebugEnabled()){
+            logger.debug(message, args);
+        }
+        // Note: intentionally NOT notifying JobLogListener, so degrade logs of autoCreateTable
+        // won't be pushed to job instance log as INFO events / 注意：不触发 JobLogListener，
+        // 避免 autoCreateTable 降级日志被按 INFO 推送到 job 实例日志体系
+    }
+
     default void info(T entity, String message, Object... args){
         Logger logger = getLogger();
         if (Objects.nonNull(logger) && logger.isInfoEnabled()){

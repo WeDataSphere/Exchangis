@@ -70,7 +70,7 @@ public abstract class AbstractPartitionedSubExchangisJobHandler extends AuthEnab
         } catch (ExchangisDataSourceException e) {
             // If autoCreateTable is enabled, swallow the query exception and use the keys from TABLE_PARTITION / 开启自动建表时降级：从 TABLE_PARTITION 取分区键
             if (Boolean.TRUE.equals(AUTO_CREATE_TABLE.getValue(paramSet))){
-                trace("Fail to query partition keys for [{}.{}] (autoCreateTable=true, use keys from table partition)", database, table, e);
+                debug("Fail to query partition keys for [{}.{}] (autoCreateTable=true, use keys from table partition)", database, table, e);
                 Map<String, String> tablePartition = TABLE_PARTITION.getValue(paramSet);
                 if (Objects.nonNull(tablePartition)){
                     partitionKeys = new ArrayList<>(tablePartition.keySet());
