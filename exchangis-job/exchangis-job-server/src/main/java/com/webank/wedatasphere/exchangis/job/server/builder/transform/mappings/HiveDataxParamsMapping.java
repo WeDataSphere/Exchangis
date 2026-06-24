@@ -404,7 +404,7 @@ public class HiveDataxParamsMapping extends AbstractExchangisJobParamsMapping{
     @Override
     public JobParamDefine<?>[] sinkMappings() {
         return new JobParamDefine[]{HIVE_DATABASE, HIVE_TABLE, ENCODING, AUTO_CREATE_TABLE,
-                NULL_FORMAT, PARTITION_VALUES, FIELD_DELIMITER, FILE_TYPE, DATA_PATH, HADOOP_CONF, DEFAULT_FS,
+                NULL_FORMAT, PARTITION_KEYS, PARTITION_VALUES, FIELD_DELIMITER, FILE_TYPE, DATA_PATH, HADOOP_CONF, DEFAULT_FS,
                 HAVE_KERBEROS, KERBEROS_PRINCIPAL, KERBEROS_KEYTAB_PATH,
                 COMPRESS_NAME, IS_SINK_FILETYPE_SUPPORT, HIVE_URIS, DATA_FILE_NAME};
     }
