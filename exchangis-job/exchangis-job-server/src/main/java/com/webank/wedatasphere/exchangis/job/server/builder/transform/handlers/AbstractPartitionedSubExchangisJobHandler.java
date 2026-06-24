@@ -73,7 +73,11 @@ public abstract class AbstractPartitionedSubExchangisJobHandler extends AuthEnab
                 debug("Fail to query partition keys for [{}.{}] (autoCreateTable=true, use keys from table partition)", database, table, e);
                 Map<String, String> tablePartition = TABLE_PARTITION.getValue(paramSet);
                 if (Objects.nonNull(tablePartition)){
-                    partitionKeys = new ArrayList<>(tablePartition.keySet());
+                    // 过滤掉空值（null/空白）的分区键，避免脏 key 混入后续分区值匹配
+                    // filter out blank partition keys to avoid dirty keys polluting partition value matching
+                    partitionKeys = tablePartition.keySet().stream()
+                            .filter(StringUtils::isNotBlank)
+                            .collect(Collectors.toList());
                 }
             } else {
                 throw new ExchangisJobException.Runtime(e.getErrCode(), e.getMessage(), e.getCause());
