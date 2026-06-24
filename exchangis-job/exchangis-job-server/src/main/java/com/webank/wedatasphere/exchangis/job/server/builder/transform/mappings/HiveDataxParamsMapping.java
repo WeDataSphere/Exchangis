@@ -190,22 +190,38 @@ public class HiveDataxParamsMapping extends AbstractExchangisJobParamsMapping{
     private static final JobParamDefine<HiveV2FileType> FILE_TYPE = JobParams.define("fileType", paramSet -> {
         Map<String, String> tableProps = HIVE_TABLE_PROPS.getValue(paramSet);
         AtomicReference<HiveV2FileType> fileType = new AtomicReference<>();
-        Optional.ofNullable(tableProps.get("serialization.lib")).ifPresent(serLib -> fileType
-                .set(HiveV2FileType.serde(serLib)));
+        // set 前先判断值非 null，避免 serde/input/output 返回 null 覆盖前面已识别出的有效类型
+        // check non-null before set, to avoid null from serde/input/output overwriting a valid type already found
+        Optional.ofNullable(tableProps.get("serialization.lib")).ifPresent(serLib -> {
+            HiveV2FileType type = HiveV2FileType.serde(serLib);
+            if (Objects.nonNull(type)) {
+                fileType.set(type);
+            }
+        });
         if (Objects.nonNull(fileType.get())){
-            Optional.ofNullable(tableProps.get("file.inputformat")).ifPresent(inputFormat -> fileType
-                    .set(HiveV2FileType.input(inputFormat)));
+            Optional.ofNullable(tableProps.get("file.inputformat")).ifPresent(inputFormat -> {
+                HiveV2FileType type = HiveV2FileType.input(inputFormat);
+                if (Objects.nonNull(type)) {
+                    fileType.set(type);
+                }
+            });
         }
         if (Objects.nonNull(fileType.get())){
-            Optional.ofNullable(tableProps.get("file.outputformat")).ifPresent(outputFormat -> fileType
-                    .set(HiveV2FileType.output(outputFormat)));
+            Optional.ofNullable(tableProps.get("file.outputformat")).ifPresent(outputFormat -> {
+                HiveV2FileType type = HiveV2FileType.output(outputFormat);
+                if (Objects.nonNull(type)) {
+                    fileType.set(type);
+                }
+            });
         }
         if (Objects.nonNull(fileType.get())){
             return fileType.get();
         }
-        // If no suitable file type found, default to ORC when autoCreateTable is enabled, otherwise TEXT
-        // 未找到合适的文件类型时，开启自动建表则默认 ORC(自动创建 ORC 表)，否则 TEXT
-        return Boolean.TRUE.equals(AUTO_CREATE_TABLE.getValue(paramSet)) ? HiveV2FileType.ORC : HiveV2FileType.TEXT;
+        // 未识别出文件类型时的默认值：自动建表开启 且 tableProps 为空（表不存在）才默认 ORC，否则 TEXT
+        // default when no file type recognized: ORC only if autoCreateTable enabled AND tableProps empty (table absent), otherwise TEXT
+        boolean autoCreate = Boolean.TRUE.equals(AUTO_CREATE_TABLE.getValue(paramSet));
+        boolean tableAbsent = tableProps == null || tableProps.isEmpty();
+        return (autoCreate && tableAbsent) ? HiveV2FileType.ORC : HiveV2FileType.TEXT;
     });
 
     /**
