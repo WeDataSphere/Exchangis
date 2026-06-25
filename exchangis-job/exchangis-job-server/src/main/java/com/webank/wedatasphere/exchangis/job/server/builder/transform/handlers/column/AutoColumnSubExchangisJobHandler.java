@@ -225,12 +225,12 @@ public abstract class AutoColumnSubExchangisJobHandler extends AbstractPartition
     protected final void completeColumns(List<SubExchangisJob.ColumnDefine> columns, List<MetaColumn> metaColumns,
                                          Supplier<Map<String, String>> getPartColumns){
         Map<String, MetaColumn> metaColumnMap = metaColumns.stream().collect(Collectors.toMap(
-                MetaColumn::getName, metaColumn -> metaColumn, (left, right) -> left
+                metaColumn -> normalizeColumnName(metaColumn.getName()), metaColumn -> metaColumn, (left, right) -> left
         ));
         for (int i = 0; i < columns.size(); i ++){
             SubExchangisJob.ColumnDefine column = columns.get(i);
             String name = column.getName();
-            MetaColumn metaColumn = metaColumnMap.get(name);
+            MetaColumn metaColumn = metaColumnMap.get(normalizeColumnName(name));
             if (Objects.nonNull(metaColumn)){
                 SubExchangisJob.ColumnDefine completedCol = ColumnDefineUtils.getColumn(name, metaColumn.getType(), metaColumn.getIndex());
                 completedCol.setValue(column.getValue());
@@ -255,6 +255,26 @@ public abstract class AutoColumnSubExchangisJobHandler extends AbstractPartition
                 throw new ExchangisJobException.Runtime(-1, "Unable to find match column: [" + name + "] (表中找不到对应的字段)", null);
             }
         }
+    }
+
+    /**
+     * Normalize column name for metadata lookup(规范化列名用于元数据匹配)
+     * @param columnName column name
+     * @return normalized column name
+     */
+    protected String normalizeColumnName(String columnName){
+        if (columnCaseSensitive() || Objects.isNull(columnName)){
+            return columnName;
+        }
+        return columnName.toLowerCase(Locale.ROOT);
+    }
+
+    /**
+     * Whether column name matching is case-sensitive(列名匹配是否大小写敏感)
+     * @return true if case-sensitive
+     */
+    protected boolean columnCaseSensitive(){
+        return true;
     }
 
     /**
