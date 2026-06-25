@@ -59,6 +59,20 @@ public interface MetadataInfoService extends ServiceRpcInf {
     List<MetaColumn> getColumns(String userName, Long dataSourceId, String database, String table) throws ExchangisDataSourceException;
 
     /**
+     * Check whether the table exists(校验数据表是否存在)
+     * @param userName userName
+     * @param dataSourceId data source id
+     * @param database database
+     * @param table table
+     * @return true if the table exists
+     * @throws ExchangisDataSourceException
+     */
+    boolean existsTable(String userName, Long dataSourceId, String database, String table) throws ExchangisDataSourceException;
+
+    boolean existsTable(ServiceRpcClient<?> rpcClient, String userName, Long dataSourceId,
+                        String database, String table) throws ExchangisDataSourceException;
+
+    /**
      * Get the default(local) hdfs information
      * @param uri uri
      * @return

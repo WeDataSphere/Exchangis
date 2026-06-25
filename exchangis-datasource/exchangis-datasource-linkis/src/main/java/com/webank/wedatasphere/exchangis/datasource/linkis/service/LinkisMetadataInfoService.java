@@ -6,8 +6,10 @@ import com.webank.wedatasphere.exchangis.datasource.core.exception.ExchangisData
 import com.webank.wedatasphere.exchangis.datasource.core.service.MetadataInfoService;
 import com.webank.wedatasphere.exchangis.datasource.core.service.rpc.ServiceRpcClient;
 import com.webank.wedatasphere.exchangis.datasource.linkis.ExchangisLinkisRemoteClient;
+import com.webank.wedatasphere.exchangis.datasource.linkis.request.MetadataExistsTableAction;
 import com.webank.wedatasphere.exchangis.datasource.linkis.request.MetadataGetConnInfoAction;
 import com.webank.wedatasphere.exchangis.datasource.linkis.request.MetadataGetPartitionPropsAction;
+import com.webank.wedatasphere.exchangis.datasource.linkis.response.MetadataExistsTableResult;
 import com.webank.wedatasphere.exchangis.datasource.linkis.response.MetadataGetConnInfoResult;
 import com.webank.wedatasphere.exchangis.datasource.linkis.response.MetadataGetPartitionPropsResult;
 import com.webank.wedatasphere.exchangis.datasource.linkis.service.rpc.LinkisDataSourceServiceOperation;
@@ -114,6 +116,24 @@ public class LinkisMetadataInfoService extends LinkisDataSourceServiceRpcDispatc
         Optional.ofNullable(columnInfoList).ifPresent(infoList -> infoList.forEach(info ->
                 columns.add(new MetaColumn(info.getIndex(), info.getName(), info.getType(), info.isPrimaryKey()))));
         return columns;
+    }
+
+    @Override
+    public boolean existsTable(String userName, Long dataSourceId, String database, String table) throws ExchangisDataSourceException {
+        return existsTable(getDefaultRemoteClient(), userName, dataSourceId, database, table);
+    }
+
+    @Override
+    @SuppressWarnings("unchecked")
+    public boolean existsTable(ServiceRpcClient<?> rpcClient, String userName, Long dataSourceId,
+                               String database, String table) throws ExchangisDataSourceException {
+        MetadataExistsTableResult result = dispatch((ServiceRpcClient<LinkisMetaDataRemoteClient>) rpcClient, new LinkisDataSourceServiceOperation(() -> {
+            MetadataExistsTableAction action = new MetadataExistsTableAction(dataSourceId,
+                    database, table, LINKIS_RPC_CLIENT_SYSTEM.getValue());
+            action.setUser(userName);
+            return action;
+        }), CLIENT_METADATA_GET_TABLES_ERROR.getCode(), "existsTable");
+        return result.getExists();
     }
 
     @Override
