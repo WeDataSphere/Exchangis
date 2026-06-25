@@ -18,4 +18,9 @@ public class OracleAutoColumnJobHandler extends AutoColumnSubExchangisJobHandler
     protected boolean autoColumn() {
         return true;
     }
+
+    @Override
+    protected boolean columnCaseSensitive() {
+        return false;
+    }
 }

@@ -23,6 +23,11 @@ public class HiveAutoColumnJobHandler extends AutoColumnSubExchangisJobHandler {
         return true;
     }
 
+    @Override
+    protected boolean columnCaseSensitive() {
+        return false;
+    }
+
     /**
      * Resume the params in thread local
      * @return bool

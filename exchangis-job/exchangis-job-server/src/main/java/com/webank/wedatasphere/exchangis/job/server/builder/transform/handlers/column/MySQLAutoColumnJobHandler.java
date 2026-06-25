@@ -10,6 +10,11 @@ public class MySQLAutoColumnJobHandler extends AutoColumnSubExchangisJobHandler 
     }
 
     @Override
+    protected boolean columnCaseSensitive() {
+        return false;
+    }
+
+    @Override
     public String dataSourceType() {
         return "mysql";
     }

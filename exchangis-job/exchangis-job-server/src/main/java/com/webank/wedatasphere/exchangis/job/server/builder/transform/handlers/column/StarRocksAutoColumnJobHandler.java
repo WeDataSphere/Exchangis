@@ -20,4 +20,9 @@ public class StarRocksAutoColumnJobHandler extends AutoColumnSubExchangisJobHand
         return true;
     }
 
+    @Override
+    protected boolean columnCaseSensitive() {
+        return false;
+    }
+
 }
