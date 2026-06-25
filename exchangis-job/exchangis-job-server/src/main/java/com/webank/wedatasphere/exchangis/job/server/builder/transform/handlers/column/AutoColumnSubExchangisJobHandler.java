@@ -111,25 +111,12 @@ public abstract class AutoColumnSubExchangisJobHandler extends AbstractPartition
     protected void doFillColumns(JobParamSet paramSet, String dsType, List<SubExchangisJob.ColumnDefine> columns){
         List<MetaColumn> metaColumns = new ArrayList<>();
         Boolean tableExists = TABLE_EXISTS.getValue(paramSet);
-        // 表确实不存在（主动判断）→ 不查询列，metaColumns 保持空，走建表降级
+        // 表确实不存在（autoCreateTable 开启时主动判断）→ 不查询列，metaColumns 保持空，走建表降级
         if (Boolean.FALSE.equals(tableExists)) {
             debug("Table not exists (autoCreateTable=true, skip querying columns)");
         } else {
-            try {
-                metaColumns = getMetaColumns(paramSet);
-            } catch (Exception e){
-                // tableExists == null（不支持主动判断）且开启自动建表，才回退吞掉异常；其余情况异常照常抛出
-                if (!(null == tableExists && Boolean.TRUE.equals(AUTO_CREATE_TABLE.getValue(paramSet)))){
-                    if (e instanceof ExchangisJobException.Runtime){
-                        throw e;
-                    } else if (e instanceof ExchangisDataSourceException){
-                        throw new ExchangisJobException.Runtime(((ExchangisDataSourceException) e).getErrCode(), e.getMessage(), e.getCause());
-                    } else {
-                        throw new ExchangisJobException.Runtime(-1, e.getMessage(), e.getCause());
-                    }
-                }
-                // Ignore the exception
-            }
+            // tableExists == null（autoCreateTable 关闭）或 tableExists == true（表存在）：正常查询，异常照常抛出
+            metaColumns = getMetaColumns(paramSet);
         }
         if (Objects.nonNull(metaColumns) && !metaColumns.isEmpty()){
             if (columns.size() <= 0){

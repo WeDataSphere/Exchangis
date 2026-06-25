@@ -130,21 +130,17 @@ public class HiveDataxParamsMapping extends AbstractExchangisJobParamsMapping{
         JobParam<String> dsCreator = paramSet.get(JobParamConstraints.DATA_SOURCE_CREATOR);
         String dsOwner = Objects.nonNull(dsCreator) ? dsCreator.getValue() : GlobalConfiguration.getAdminUser();
         Boolean tableExists = TABLE_EXISTS.getValue(paramSet);
-        // 表确实不存在（主动判断）→ 返回空 props 走建表降级，不再查询元数据
+        // 表确实不存在（autoCreateTable 开启时主动判断）→ 返回空 props 走建表降级，不再查询元数据
         if (Boolean.FALSE.equals(tableExists)) {
             debug("Table [{}.{}] not exists (autoCreateTable=true, return empty props)", database, table);
             return new HashMap<>();
         }
+        // tableExists == null（autoCreateTable 关闭）或 tableExists == true（表存在）：正常查询，异常照常抛出
         try {
-           return Objects.requireNonNull(getBean(MetadataInfoService.class)).getTableProps(
-                   Optional.ofNullable(dsOwner).orElse(getJobBuilderContext().getOriginalJob().getCreateUser()),
+            return Objects.requireNonNull(getBean(MetadataInfoService.class)).getTableProps(
+                    Optional.ofNullable(dsOwner).orElse(getJobBuilderContext().getOriginalJob().getCreateUser()),
                     Long.valueOf(dataSourceId.getValue()), database, table);
         } catch (ExchangisDataSourceException e) {
-            // tableExists == null（不支持主动判断）才回退吞掉异常；tableExists == true（表存在）则异常照常抛出
-            if (null == tableExists && Boolean.TRUE.equals(AUTO_CREATE_TABLE.getValue(paramSet))){
-                debug("Fail to query table props for [{}.{}] (autoCreateTable=true, ignore it)", database, table, e);
-                return new HashMap<>();
-            }
             throw new ExchangisJobException.Runtime(e.getErrCode(), e.getMessage(), e.getCause());
         }
     });
@@ -158,21 +154,17 @@ public class HiveDataxParamsMapping extends AbstractExchangisJobParamsMapping{
         JobParam<String> dsCreator = paramSet.get(JobParamConstraints.DATA_SOURCE_CREATOR);
         String dsOwner = Objects.nonNull(dsCreator) ? dsCreator.getValue() : GlobalConfiguration.getAdminUser();
         Boolean tableExists = TABLE_EXISTS.getValue(paramSet);
-        // 表确实不存在（主动判断）→ 走自动建表时库级属性非必需，返回空
+        // 表确实不存在（autoCreateTable 开启时主动判断）→ 走自动建表时库级属性非必需，返回空
         if (Boolean.FALSE.equals(tableExists)) {
             debug("Table for [{}] not exists (autoCreateTable=true, return empty db props)", database);
             return new HashMap<>();
         }
+        // tableExists == null（autoCreateTable 关闭）或 tableExists == true（表存在）：正常查询，异常照常抛出
         try {
             return Objects.requireNonNull(getBean(MetadataInfoService.class)).getTableProps(
                     Optional.ofNullable(dsOwner).orElse(getJobBuilderContext().getOriginalJob().getCreateUser()),
                     Long.valueOf(dataSourceId.getValue()), database, "__DB_DEFAULT__");
         } catch (ExchangisDataSourceException e) {
-            // tableExists == null（不支持主动判断）才回退吞掉异常；tableExists == true（表存在）则异常照常抛出
-            if (null == tableExists && Boolean.TRUE.equals(AUTO_CREATE_TABLE.getValue(paramSet))){
-                debug("Fail to query database props for [{}] (autoCreateTable=true, ignore it)", database, e);
-                return new HashMap<>();
-            }
             throw new ExchangisJobException.Runtime(e.getErrCode(), e.getMessage(), e.getCause());
         }
     });
@@ -224,11 +216,10 @@ public class HiveDataxParamsMapping extends AbstractExchangisJobParamsMapping{
             return fileType.get();
         }
         // 未识别出文件类型时的默认值：自动建表开启 且表不存在时默认 ORC，否则 TEXT
-        // 表不存在优先用 existsTable 主动判断；不支持主动判断（tableExists==null）时回退用 tableProps 为空兜底
+        // 表是否存在由 existsTable 主动判断（autoCreateTable 关闭时 TABLE_EXISTS 为 null，按存在处理 → TEXT）
         // default when no file type recognized: ORC only if autoCreateTable enabled AND table absent, otherwise TEXT
         boolean autoCreate = Boolean.TRUE.equals(AUTO_CREATE_TABLE.getValue(paramSet));
-        boolean tableAbsent = Boolean.FALSE.equals(TABLE_EXISTS.getValue(paramSet))
-                || (autoCreate && (tableProps == null || tableProps.isEmpty()));
+        boolean tableAbsent = Boolean.FALSE.equals(TABLE_EXISTS.getValue(paramSet));
         return (autoCreate && tableAbsent) ? HiveV2FileType.ORC : HiveV2FileType.TEXT;
     });
 
@@ -311,20 +302,16 @@ public class HiveDataxParamsMapping extends AbstractExchangisJobParamsMapping{
                     Collections.singletonMap("user", Objects.nonNull(userName) ? userName : ""));
         }
         Boolean tableExists = TABLE_EXISTS.getValue(paramSet);
-        // 表确实不存在（主动判断）→ 走自动建表时返回空 hadoop 配置，不再查询元数据
+        // 表确实不存在（autoCreateTable 开启时主动判断）→ 走自动建表时返回空 hadoop 配置，不再查询元数据
         if (Boolean.FALSE.equals(tableExists)) {
             debug("Table not exists for uri [{}] (autoCreateTable=true, return empty hadoop config)", uri);
             return new HashMap<>();
         }
+        // tableExists == null（autoCreateTable 关闭）或 tableExists == true（表存在）：正常查询，异常照常抛出
         try {
             // TODO get the other hdfs cluster with tab
             return Objects.requireNonNull(getBean(MetadataInfoService.class)).getLocalHdfsInfo(uri);
         } catch (ExchangisDataSourceException e) {
-            // tableExists == null（不支持主动判断）才回退吞掉异常；tableExists == true（表存在）则异常照常抛出
-            if (null == tableExists && Boolean.TRUE.equals(AUTO_CREATE_TABLE.getValue(paramSet))){
-                debug("Fail to query local hdfs info for uri [{}] (autoCreateTable=true, ignore it)", uri, e);
-                return new HashMap<>();
-            }
             throw new ExchangisJobException.Runtime(e.getErrCode(), e.getDesc(), e.getCause());
         }
     });
