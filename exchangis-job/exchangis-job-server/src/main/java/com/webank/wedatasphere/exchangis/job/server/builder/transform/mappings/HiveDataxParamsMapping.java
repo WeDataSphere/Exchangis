@@ -77,12 +77,6 @@ public class HiveDataxParamsMapping extends AbstractExchangisJobParamsMapping{
         }
     }
 
-    /**
-     * Whether to auto create table / 是否自动建表
-     */
-    private static final JobParamDefine<Boolean> AUTO_CREATE_TABLE = JobParams.define(
-            "autoCreateTable", JobParamConstraints.AUTO_CREATE_TABLE,
-            (Function<String, Boolean>) Boolean::valueOf, String.class);
 
     /**
      * Hive database
@@ -135,13 +129,19 @@ public class HiveDataxParamsMapping extends AbstractExchangisJobParamsMapping{
         JobParam<String> dataSourceId = paramSet.get(JobParamConstraints.DATA_SOURCE_ID);
         JobParam<String> dsCreator = paramSet.get(JobParamConstraints.DATA_SOURCE_CREATOR);
         String dsOwner = Objects.nonNull(dsCreator) ? dsCreator.getValue() : GlobalConfiguration.getAdminUser();
+        Boolean tableExists = TABLE_EXISTS.getValue(paramSet);
+        // 表确实不存在（主动判断）→ 返回空 props 走建表降级，不再查询元数据
+        if (Boolean.FALSE.equals(tableExists)) {
+            debug("Table [{}.{}] not exists (autoCreateTable=true, return empty props)", database, table);
+            return new HashMap<>();
+        }
         try {
            return Objects.requireNonNull(getBean(MetadataInfoService.class)).getTableProps(
                    Optional.ofNullable(dsOwner).orElse(getJobBuilderContext().getOriginalJob().getCreateUser()),
                     Long.valueOf(dataSourceId.getValue()), database, table);
         } catch (ExchangisDataSourceException e) {
-            // If autoCreateTable is enabled, swallow the query exception and return empty props / 开启自动建表时，吞掉查询异常并返回空信息
-            if (Boolean.TRUE.equals(AUTO_CREATE_TABLE.getValue(paramSet))){
+            // tableExists == null（不支持主动判断）才回退吞掉异常；tableExists == true（表存在）则异常照常抛出
+            if (null == tableExists && Boolean.TRUE.equals(AUTO_CREATE_TABLE.getValue(paramSet))){
                 debug("Fail to query table props for [{}.{}] (autoCreateTable=true, ignore it)", database, table, e);
                 return new HashMap<>();
             }
@@ -157,13 +157,19 @@ public class HiveDataxParamsMapping extends AbstractExchangisJobParamsMapping{
         JobParam<String> dataSourceId = paramSet.get(JobParamConstraints.DATA_SOURCE_ID);
         JobParam<String> dsCreator = paramSet.get(JobParamConstraints.DATA_SOURCE_CREATOR);
         String dsOwner = Objects.nonNull(dsCreator) ? dsCreator.getValue() : GlobalConfiguration.getAdminUser();
+        Boolean tableExists = TABLE_EXISTS.getValue(paramSet);
+        // 表确实不存在（主动判断）→ 走自动建表时库级属性非必需，返回空
+        if (Boolean.FALSE.equals(tableExists)) {
+            debug("Table for [{}] not exists (autoCreateTable=true, return empty db props)", database);
+            return new HashMap<>();
+        }
         try {
             return Objects.requireNonNull(getBean(MetadataInfoService.class)).getTableProps(
                     Optional.ofNullable(dsOwner).orElse(getJobBuilderContext().getOriginalJob().getCreateUser()),
                     Long.valueOf(dataSourceId.getValue()), database, "__DB_DEFAULT__");
         } catch (ExchangisDataSourceException e) {
-            // If autoCreateTable is enabled, swallow the query exception and return empty props / 开启自动建表时，吞掉查询异常并返回空信息
-            if (Boolean.TRUE.equals(AUTO_CREATE_TABLE.getValue(paramSet))){
+            // tableExists == null（不支持主动判断）才回退吞掉异常；tableExists == true（表存在）则异常照常抛出
+            if (null == tableExists && Boolean.TRUE.equals(AUTO_CREATE_TABLE.getValue(paramSet))){
                 debug("Fail to query database props for [{}] (autoCreateTable=true, ignore it)", database, e);
                 return new HashMap<>();
             }
@@ -217,10 +223,12 @@ public class HiveDataxParamsMapping extends AbstractExchangisJobParamsMapping{
         if (Objects.nonNull(fileType.get())){
             return fileType.get();
         }
-        // 未识别出文件类型时的默认值：自动建表开启 且 tableProps 为空（表不存在）才默认 ORC，否则 TEXT
-        // default when no file type recognized: ORC only if autoCreateTable enabled AND tableProps empty (table absent), otherwise TEXT
+        // 未识别出文件类型时的默认值：自动建表开启 且表不存在时默认 ORC，否则 TEXT
+        // 表不存在优先用 existsTable 主动判断；不支持主动判断（tableExists==null）时回退用 tableProps 为空兜底
+        // default when no file type recognized: ORC only if autoCreateTable enabled AND table absent, otherwise TEXT
         boolean autoCreate = Boolean.TRUE.equals(AUTO_CREATE_TABLE.getValue(paramSet));
-        boolean tableAbsent = tableProps == null || tableProps.isEmpty();
+        boolean tableAbsent = Boolean.FALSE.equals(TABLE_EXISTS.getValue(paramSet))
+                || (autoCreate && (tableProps == null || tableProps.isEmpty()));
         return (autoCreate && tableAbsent) ? HiveV2FileType.ORC : HiveV2FileType.TEXT;
     });
 
@@ -302,12 +310,18 @@ public class HiveDataxParamsMapping extends AbstractExchangisJobParamsMapping{
             uri = PatternInjectUtils.inject(HIVE_WAREHOUSE_PATTERN.getValue(),
                     Collections.singletonMap("user", Objects.nonNull(userName) ? userName : ""));
         }
+        Boolean tableExists = TABLE_EXISTS.getValue(paramSet);
+        // 表确实不存在（主动判断）→ 走自动建表时返回空 hadoop 配置，不再查询元数据
+        if (Boolean.FALSE.equals(tableExists)) {
+            debug("Table not exists for uri [{}] (autoCreateTable=true, return empty hadoop config)", uri);
+            return new HashMap<>();
+        }
         try {
             // TODO get the other hdfs cluster with tab
             return Objects.requireNonNull(getBean(MetadataInfoService.class)).getLocalHdfsInfo(uri);
         } catch (ExchangisDataSourceException e) {
-            // If autoCreateTable is enabled, swallow the exception and return empty hadoop config / 开启自动建表时降级返回空配置
-            if (Boolean.TRUE.equals(AUTO_CREATE_TABLE.getValue(paramSet))){
+            // tableExists == null（不支持主动判断）才回退吞掉异常；tableExists == true（表存在）则异常照常抛出
+            if (null == tableExists && Boolean.TRUE.equals(AUTO_CREATE_TABLE.getValue(paramSet))){
                 debug("Fail to query local hdfs info for uri [{}] (autoCreateTable=true, ignore it)", uri, e);
                 return new HashMap<>();
             }
