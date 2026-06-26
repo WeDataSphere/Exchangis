@@ -294,13 +294,6 @@ public class HiveDataxParamsMapping extends AbstractExchangisJobParamsMapping{
             uri = PatternInjectUtils.inject(HIVE_WAREHOUSE_PATTERN.getValue(),
                     Collections.singletonMap("user", Objects.nonNull(userName) ? userName : ""));
         }
-        Boolean tableExists = TABLE_EXISTS.getValue(paramSet);
-        // 表确实不存在（autoCreateTable 开启时主动判断）→ 走自动建表时返回空 hadoop 配置，不再查询元数据
-        if (Boolean.FALSE.equals(tableExists)) {
-            debug("Table not exists for uri [{}] (autoCreateTable=true, return empty hadoop config)", uri);
-            return new HashMap<>();
-        }
-        // tableExists == null（autoCreateTable 关闭）或 tableExists == true（表存在）：正常查询，异常照常抛出
         try {
             // TODO get the other hdfs cluster with tab
             return Objects.requireNonNull(getBean(MetadataInfoService.class)).getLocalHdfsInfo(uri);
