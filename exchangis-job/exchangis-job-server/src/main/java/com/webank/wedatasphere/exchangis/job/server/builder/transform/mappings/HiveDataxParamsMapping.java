@@ -153,13 +153,6 @@ public class HiveDataxParamsMapping extends AbstractExchangisJobParamsMapping{
         JobParam<String> dataSourceId = paramSet.get(JobParamConstraints.DATA_SOURCE_ID);
         JobParam<String> dsCreator = paramSet.get(JobParamConstraints.DATA_SOURCE_CREATOR);
         String dsOwner = Objects.nonNull(dsCreator) ? dsCreator.getValue() : GlobalConfiguration.getAdminUser();
-        Boolean tableExists = TABLE_EXISTS.getValue(paramSet);
-        // 表确实不存在（autoCreateTable 开启时主动判断）→ 走自动建表时库级属性非必需，返回空
-        if (Boolean.FALSE.equals(tableExists)) {
-            debug("Table for [{}] not exists (autoCreateTable=true, return empty db props)", database);
-            return new HashMap<>();
-        }
-        // tableExists == null（autoCreateTable 关闭）或 tableExists == true（表存在）：正常查询，异常照常抛出
         try {
             return Objects.requireNonNull(getBean(MetadataInfoService.class)).getTableProps(
                     Optional.ofNullable(dsOwner).orElse(getJobBuilderContext().getOriginalJob().getCreateUser()),
