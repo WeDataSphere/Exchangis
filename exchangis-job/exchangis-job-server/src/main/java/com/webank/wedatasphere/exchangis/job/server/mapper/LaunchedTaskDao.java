@@ -103,6 +103,14 @@ public interface LaunchedTaskDao {
     List<LaunchedExchangisTaskEntity> selectTaskListByJobExecutionId(@Param("jobExecutionId") String jobExecutionId);
 
     /**
+     * Batch query task entities (metrics-related columns only) by job execution ids,
+     * used to calculate job flow without loading heavy columns (content/linkis_job_info etc.)
+     * @param jobExecutionIds job execution id list
+     * @return task entity list (only jobExecutionId/engineType/metrics populated)
+     */
+    List<LaunchedExchangisTaskEntity> selectTaskMetricsByJobExecutionIds(@Param("jobExecutionIds") List<String> jobExecutionIds);
+
+    /**
      * Select status list
      * @param jobExecutionId job execution id
      * @return

@@ -271,24 +271,61 @@ public class DefaultJobExecuteService implements JobExecuteService {
     @Override
     public PageResult<ExchangisLaunchedJobListVo> getExecutedJobList(String jobExecutionId, String jobName, String status,
                                                                Long launchStartTime, Long launchEndTime, int current, int size, HttpServletRequest request) throws ExchangisJobServerException {
-        PageHelper.startPage(current, size);
+        long totalStart = System.currentTimeMillis();
         if (current <= 0) {
             current = 1;
         }
         if (size <= 0) {
             size = 10;
         }
+        // NOTE: startPage must use the validated current/size, otherwise a missing/zero paging
+        // param from the caller (bound to 0 as primitive int) makes PageHelper skip LIMIT and
+        // getAllLaunchedJob would load all jobs.
+        PageHelper.startPage(current, size);
         List<ExchangisLaunchedJobListVo> jobList = new ArrayList<>();
         Date startTime = launchStartTime == null ? null : new Date(launchStartTime);
         Date endTime = launchEndTime == null ? null : new Date(launchEndTime);
         String loginUser = UserUtils.getLoginUser(request);
+        // queryJobCost covers both PageHelper count(*) and the paged select (two DB round-trips)
+        long queryJobStart = System.currentTimeMillis();
         List<LaunchedExchangisJobEntity> jobEntitylist =
                 launchedJobDao.getAllLaunchedJob(jobExecutionId, jobName, status, startTime, endTime,
                         loginUser, GlobalConfiguration.isAdminUser(loginUser));
+        long queryJobCost = System.currentTimeMillis() - queryJobStart;
         PageInfo<LaunchedExchangisJobEntity> pageInfo = new PageInfo<>(jobEntitylist);
+        // Batch load task metrics for all jobs in the current page to avoid N+1 queries,
+        // then group by jobExecutionId so that each job's flow can be computed in memory.
+        Map<String, List<LaunchedExchangisTaskEntity>> taskMapByJobExecutionId = new HashMap<>();
+        long queryTaskCost = 0L;
+        int taskCount = 0;
+        if (jobEntitylist != null && !jobEntitylist.isEmpty()) {
+            List<String> jobExecutionIdList = new ArrayList<>(jobEntitylist.size());
+            for (LaunchedExchangisJobEntity launchedExchangisJobEntity : jobEntitylist) {
+                if (StringUtils.isNotBlank(launchedExchangisJobEntity.getJobExecutionId())) {
+                    jobExecutionIdList.add(launchedExchangisJobEntity.getJobExecutionId());
+                }
+            }
+            if (!jobExecutionIdList.isEmpty()) {
+                long queryTaskStart = System.currentTimeMillis();
+                List<LaunchedExchangisTaskEntity> allTaskEntities =
+                        launchedTaskDao.selectTaskMetricsByJobExecutionIds(jobExecutionIdList);
+                queryTaskCost = System.currentTimeMillis() - queryTaskStart;
+                if (allTaskEntities != null) {
+                    taskCount = allTaskEntities.size();
+                    for (LaunchedExchangisTaskEntity launchedExchangisTaskEntity : allTaskEntities) {
+                        taskMapByJobExecutionId
+                                .computeIfAbsent(launchedExchangisTaskEntity.getJobExecutionId(), k -> new ArrayList<>())
+                                .add(launchedExchangisTaskEntity);
+                    }
+                }
+            }
+        }
+        long mapCost = 0L;
+        long flowCost = 0L;
         if (jobEntitylist != null) {
             try {
                 for (LaunchedExchangisJobEntity launchedExchangisJobEntity : jobEntitylist) {
+                    long mapStart = System.currentTimeMillis();
                     ExchangisLaunchedJobListVo exchangisJobVo = modelMapper.map(launchedExchangisJobEntity, ExchangisLaunchedJobListVo.class);
                     if (launchedExchangisJobEntity.getExchangisJobEntity() == null || launchedExchangisJobEntity.getExchangisJobEntity().getSource() == null) {
                         exchangisJobVo.setExecuteNode("-");
@@ -299,25 +336,24 @@ public class DefaultJobExecuteService implements JobExecuteService {
                                     .getOrDefault("executeNode", "-")));
                         }
                     }
-                    List<LaunchedExchangisTaskEntity> launchedExchangisTaskEntities = launchedTaskDao.selectTaskListByJobExecutionId(launchedExchangisJobEntity.getJobExecutionId());
+                    mapCost += System.currentTimeMillis() - mapStart;
+                    List<LaunchedExchangisTaskEntity> launchedExchangisTaskEntities = taskMapByJobExecutionId.get(launchedExchangisJobEntity.getJobExecutionId());
                     if (launchedExchangisTaskEntities == null) {
                         exchangisJobVo.setFlow((long) 0);
                     } else {
                         double flows = 0;
                         int taskNum = launchedExchangisTaskEntities.size();
+                        long flowStart = System.currentTimeMillis();
                         for (LaunchedExchangisTaskEntity launchedExchangisTaskEntity : launchedExchangisTaskEntities) {
-                            MetricsConverter<ExchangisMetricsVo> metricsConverter = metricConverterFactory.getOrCreateMetricsConverter(launchedExchangisTaskEntity.getEngineType());
-                            ExchangisLaunchedTaskMetricsVo exchangisLaunchedTaskVo = new ExchangisLaunchedTaskMetricsVo();
                             if (launchedExchangisTaskEntity.getMetricsMap() == null) {
-                                flows += 0;
                                 continue;
                             }
+                            MetricsConverter<ExchangisMetricsVo> metricsConverter = metricConverterFactory.getOrCreateMetricsConverter(launchedExchangisTaskEntity.getEngineType());
+                            ExchangisLaunchedTaskMetricsVo exchangisLaunchedTaskVo = new ExchangisLaunchedTaskMetricsVo();
                             exchangisLaunchedTaskVo.setMetrics(metricsConverter.convert(launchedExchangisTaskEntity.getMetricsMap()));
-                            Map<String, Object> flowMap = (Map<String, Object>) launchedExchangisTaskEntity.getMetricsMap().get("traffic");
-                            //Map<String, Object> flowMap = (Map<String, Object>) launchedExchangisTaskEntity.getMetricsMap().get("traffic");
-                            //flows += flowMap == null ? 0 : Integer.parseInt(flowMap.get("flow").toString());
                             flows += exchangisLaunchedTaskVo.getMetrics().getTraffic().getFlow();
                         }
+                        flowCost += System.currentTimeMillis() - flowStart;
                         exchangisJobVo.setFlow(taskNum == 0 ? 0 : (long) (flows / taskNum));
                     }
                     jobList.add(exchangisJobVo);
@@ -326,6 +362,9 @@ public class DefaultJobExecuteService implements JobExecuteService {
                 LOG.error("Exception happened while get JobLists mapping to Vo(获取job列表映射至页面是出错，请校验任务信息), " + "message: " + e.getMessage(), e);
             }
         }
+        int jobCount = jobEntitylist == null ? 0 : jobEntitylist.size();
+        LOG.info("getExecutedJobList stage cost(获取已执行作业列表各阶段耗时), total={}ms, queryJob={}ms[count+paged], queryTask={}ms, map={}ms, flow={}ms, jobCount={}, taskCount={}, pageTotal={}",
+                System.currentTimeMillis() - totalStart, queryJobCost, queryTaskCost, mapCost, flowCost, jobCount, taskCount, pageInfo.getTotal());
         PageResult<ExchangisLaunchedJobListVo> pageResult = new PageResult<>();
         pageResult.setList(jobList);
         pageResult.setTotal(pageInfo.getTotal());

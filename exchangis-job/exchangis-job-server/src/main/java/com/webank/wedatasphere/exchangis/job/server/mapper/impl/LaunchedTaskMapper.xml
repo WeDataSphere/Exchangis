@@ -204,6 +204,23 @@
         where job_execution_id = #{jobExecutionId}
     </select>
 
+    <!-- Lightweight result map for metrics-related columns only (flow calculation) -->
+    <resultMap id="TaskMetricsMap" type="com.webank.wedatasphere.exchangis.job.launcher.entity.LaunchedExchangisTaskEntity">
+        <result column="job_execution_id" property="jobExecutionId"/>
+        <result column="engine_type" property="engineType"/>
+        <result column="metrics" property="metrics"/>
+    </resultMap>
+
+    <select id="selectTaskMetricsByJobExecutionIds" resultMap="TaskMetricsMap">
+        select job_execution_id, engine_type, metrics
+        from
+        <include refid="TableName" />
+        where job_execution_id in
+        <foreach collection="jobExecutionIds" item="item" open="(" separator="," close=")">
+            #{item}
+        </foreach>
+    </select>
+
     <select id="selectTaskStatusByJobExecutionId" resultType="String">
         <![CDATA[SELECT status FROM ]]>
         <include refid="TableName" />

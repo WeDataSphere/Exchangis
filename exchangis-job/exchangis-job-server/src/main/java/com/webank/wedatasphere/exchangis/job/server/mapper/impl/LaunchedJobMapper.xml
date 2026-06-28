@@ -232,6 +232,39 @@
         order by create_time desc
     </select>
 
+    <!--
+        Custom count for PageHelper (matched by id suffix "_COUNT"): count only the
+        exchangis_launched_job_entity table instead of the full LEFT/INNER JOIN in
+        getAllLaunchedJob, because all filter columns live on table l. Assumes
+        launched_job.job_id always has a matching exchangis_job_entity + project_info
+        (true in normal exchangis usage); otherwise pageTotal may be slightly larger.
+    -->
+    <select id="getAllLaunchedJob_COUNT" resultType="java.lang.Long">
+        SELECT count(*)
+        FROM
+        `exchangis_launched_job_entity` l
+        <where>
+            <if test="jobExecutionId.trim() != '' and jobExecutionId != null">
+                and l.job_execution_id = #{jobExecutionId}
+            </if>
+            <if test="launchStartTime != null">
+                and l.create_time >= #{launchStartTime}
+            </if>
+            <if test="launchEndTime != null">
+                and l.create_time &lt;= #{launchEndTime}
+            </if>
+            <if test="isAdminUser != null and isAdminUser == false">
+                and l.create_user = #{createUser}
+            </if>
+            <if test="status.trim() != '' and status != null">
+                and l.status = #{status}
+            </if>
+            <if test="jobName.trim() != '' and jobName != null">
+                and l.name like concat('%', #{jobName}, '%')
+            </if>
+        </where>
+    </select>
+
     <select id="count" resultType="java.lang.Integer">
         SELECT count(*)
         FROM
