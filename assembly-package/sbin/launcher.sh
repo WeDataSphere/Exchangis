@@ -190,9 +190,76 @@ wait_for_stop(){
     return 1
 }
 
-# Input: $1:module_name, $2:main class
+# Resolve the listening TCP port of a running process (best effort)
+# Input: $1 = pid
+# Output: prints the first listening TCP port (empty if not found / undetectable)
+get_port_by_pid(){
+    local pid=$1
+    if [[ -z "$pid" ]]; then return; fi
+    local port=""
+    # lsof works on both Linux and macOS; NAME column looks like "*:9321"
+    if command -v lsof >/dev/null 2>&1; then
+        port=$(lsof -nP -iTCP -sTCP:LISTEN -a -p "$pid" 2>/dev/null | awk 'NR>1{print $9}' | sed 's/.*://' | head -1)
+    fi
+    # Fallback: netstat -tlnp (Linux only, needs the pid column)
+    if [[ -z "$port" ]] && command -v netstat >/dev/null 2>&1; then
+        port=$(netstat -tlnp 2>/dev/null | awk -v pid="/$pid/" '$0 ~ pid {n=split($4,a,":"); print a[n]}' | head -1)
+    fi
+    echo "$port"
+}
+
+# Resolve the configured server port from the service properties (fallback)
+# Output: prints the port (empty if not found)
+get_port_from_config(){
+    local app_props="${EXCHANGIS_CONF_PATH}/application-exchangis.properties"
+    local port=""
+    if [[ -f "$app_props" ]]; then
+        port=$(grep -E "^server[._]port" "$app_props" | head -1 | cut -d'=' -f2 | tr -d '[:space:]')
+    fi
+    echo "$port"
+}
+
+# Check whether the TCP port is still being listened on
+# Return 0 if still LISTEN (in use), 1 if released / undetectable
+is_port_listening(){
+    local port=$1
+    if [[ -z "$port" ]]; then return 1; fi
+    if command -v lsof >/dev/null 2>&1; then
+        if [[ -n "$(lsof -nP -iTCP:${port} -sTCP:LISTEN -t 2>/dev/null)" ]]; then
+            return 0
+        fi
+        return 1
+    elif command -v netstat >/dev/null 2>&1; then
+        # Matches both Linux ":9321" and macOS "*.9321" local address forms
+        if netstat -tln 2>/dev/null | grep -E "[:.]${port}([^0-9]|$)" >/dev/null 2>&1; then
+            return 0
+        fi
+        return 1
+    fi
+    # No detection tool available: cannot confirm, assume released so we don't block restart
+    return 1
+}
+
+# Wait until the listening port is released (no longer LISTEN)
+# Input: $1 = port, $2 = timeout seconds (default 15)
+wait_for_port_release(){
+    local port=$1
+    if [[ -z "$port" ]]; then return 0; fi
+    local now_s=`date '+%s'`
+    local stop_s=$((now_s + ${2:-15}))
+    while [[ ${now_s} -le ${stop_s} ]]; do
+        is_port_listening "$port"
+        if [[ $? -ne 0 ]]; then return 0; fi
+        sleep ${SLEEP_TIMEREVAL_S}
+        now_s=`date '+%s'`
+    done
+    return 1
+}
+
+# Input: $1:module_name, $2:main class, $3:wait timeout seconds (default: 20s for startup)
 launcher_start(){
     LOG INFO "Launcher: launch to start server [ $1 ]"
+    local wait_timeout=${3:-}
     status_class $1 $2
     if [[ $? -eq 0 ]]; then
       LOG INFO "Launcher: [ $1 ] has been started in process"
@@ -202,22 +269,29 @@ launcher_start(){
     # Execute
     LOG INFO ${EXEC_JAVA}
     nohup ${EXEC_JAVA}  >/dev/null 2>&1 &
-    LOG INFO "Launcher: waiting [ $1 ] to start complete ..."
-    wait_for_startup 20 $1 $2
+    # Wait timeout: 20s for startup (default). --wait N overrides it (must be a positive integer).
+    local startup_wait=20
+    if [[ -n "${wait_timeout}" ]] && [[ "${wait_timeout}" =~ ^[0-9]+$ ]] && [[ ${wait_timeout} -gt 0 ]]; then
+      startup_wait=${wait_timeout}
+    fi
+    LOG INFO "Launcher: waiting [ $1 ] to start complete (timeout ${startup_wait}s) ..."
+    wait_for_startup ${startup_wait} $1 $2
     if [[ $? -eq 0 ]]; then
         LOG INFO "Launcher: [ $1 ] start success"
         APPLICATION_YML="${EXCHANGIS_CONF_PATH}/application-exchangis.properties"
         EUREKA_URL=`cat ${APPLICATION_YML} | grep Zone | sed -n '1p'`
         LOG INFO "Please check exchangis server in EUREKA_ADDRESS: ${EUREKA_URL#*:} "
     else
-        LOG ERROR "Launcher: [ $1 ] start fail over 20 seconds, please retry it"
+        LOG ERROR "Launcher: [ $1 ] start fail over ${startup_wait} seconds, please retry it"
     fi
 }
 
-# Input: $1:module_name, $2:main class
+# Input: $1:module_name, $2:main class, $3:force stop (true -> SIGKILL), $4:wait timeout seconds (default: 20s process exit / 15s port release)
 launcher_stop(){
     LOG INFO "Launcher: stop the server [ $1 ]"
     local p=""
+    local force=${3:-}
+    local wait_timeout=${4:-}
     local pid_file_path=${EXCHANGIS_PID_PATH}/$1.pid
     if [ "x"${pid_file_path} != "x" ]; then
       if [ -f ${pid_file_path} ]; then
@@ -233,18 +307,51 @@ launcher_stop(){
       LOG INFO "Launcher: [ $1 ] didn't start successfully, not found in the java process table"
       return 0
     fi
+    # Resolve the listening port BEFORE killing (best effort: live pid first, then config)
+    local port=$(get_port_by_pid ${p})
+    if [[ -z "${port}" ]]; then
+      port=$(get_port_from_config)
+    fi
+    local signal="SIGTERM"
+    if [[ "x${force}" == "xtrue" ]]; then
+      signal="SIGKILL"
+      LOG INFO "Launcher: [ $1 ] --force enabled, sending SIGKILL to pid [ ${p} ]"
+    else
+      LOG INFO "Launcher: [ $1 ] sending SIGTERM to pid [ ${p} ], port [ ${port:-unknown} ]"
+    fi
+    # Wait timeouts: 20s for process exit, 15s for port release (defaults).
+    # --wait N overrides both with the same value (must be a positive integer).
+    local proc_wait=20
+    local port_wait=15
+    if [[ -n "${wait_timeout}" ]] && [[ "${wait_timeout}" =~ ^[0-9]+$ ]] && [[ ${wait_timeout} -gt 0 ]]; then
+      proc_wait=${wait_timeout}
+      port_wait=${wait_timeout}
+    fi
     case "`uname`" in
       CYCGWIN*) taskkill /PID "${p}" ;;
-      *) kill -SIGTERM "${p}" ;;
+      *) kill -${signal} "${p}" ;;
     esac
-    LOG INFO "Launcher: waiting [ $1 ] to stop complete ..."
-    wait_for_stop 20 $1 $2
-    if [[ $? -eq 0 ]]; then
-      LOG INFO "Launcher: [ $1 ] stop success"
-    else
-      LOG ERROR "Launcher: [ $1 ] stop exceeded over 20s " >&2
+    LOG INFO "Launcher: waiting [ $1 ] to stop complete (timeout ${proc_wait}s) ..."
+    wait_for_stop ${proc_wait} $1 $2
+    if [[ $? -ne 0 ]]; then
+      LOG ERROR "Launcher: [ $1 ] stop exceeded over ${proc_wait}s, port may not be released; retry with --force (kill -9)" >&2
       return 1
     fi
+    # Confirm the listening port has been released before returning success
+    if [[ -n "${port}" ]]; then
+      LOG INFO "Launcher: waiting [ $1 ] port [ ${port} ] to be released (timeout ${port_wait}s) ..."
+      wait_for_port_release "${port}" ${port_wait}
+      if [[ $? -eq 0 ]]; then
+        LOG INFO "Launcher: [ $1 ] port [ ${port} ] has been released"
+      else
+        LOG ERROR "Launcher: [ $1 ] port [ ${port} ] still in use after stop" >&2
+        return 1
+      fi
+    else
+      LOG WARN "Launcher: [ $1 ] unable to resolve the listening port, skip port-release check"
+    fi
+    LOG INFO "Launcher: [ $1 ] stop success"
+    return 0
 }
 
 load_env_definitions ${ENV_FILE}

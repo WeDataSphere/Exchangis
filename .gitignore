@@ -40,3 +40,6 @@ workspace/
 .flattened-pom.xml
 
 .claude
+
+# codegraph
+.codegraph
