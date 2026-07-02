@@ -150,8 +150,14 @@ public class ProjectImportServerImpl implements ProjectImportService {
             job.setJobName(updateName(job.getJobName(), versionSuffix));
             List<ExchangisJobVo> existedJobs = jobInfoService.getByNameWithProjectId(job.getJobName(), projectId);
             if (!existedJobs.isEmpty()){
-                throw new ExchangisJobServerException(ExchangisJobExceptionCode.JOB_EXCEPTION_CODE.getCode(),
-                        "Already exits duplicated job name(存在重复任务名称) jobName is:" + "[" + job.getJobName() + "]");
+                // 注释掉重复任务异常抛出，改为跳过后续import步骤并记录日志，同时将已存在任务的id塞入idCatalog
+                // throw new ExchangisJobServerException(ExchangisJobExceptionCode.JOB_EXCEPTION_CODE.getCode(),
+                //         "Already exits duplicated job name(存在重复任务名称) jobName is:" + "[" + job.getJobName() + "]");
+                ExchangisJobVo existedJob = existedJobs.get(0);
+                LOG.warn("Skip to import duplicated job(跳过重复任务导入): [jobName: {}, import id: {}, export id: {}, existing id: {}]",
+                        job.getJobName(), existedJob.getId(), prevId, existedJob.getId());
+                idCatalog.getJobIds().put(prevId, existedJob.getId());
+                continue;
             }
             jobInfoService.createJob(job);
             LOG.info("Success to import job: [name: {}, import id: {}, export id: {}]",
