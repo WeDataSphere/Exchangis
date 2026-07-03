@@ -14,6 +14,8 @@ import com.webank.wedatasphere.dss.standard.common.entity.ref.InternalResponseRe
 import com.webank.wedatasphere.exchangis.dss.appconn.constraints.Constraints;
 import com.webank.wedatasphere.exchangis.dss.appconn.utils.ExchangisHttpUtils;
 
+import java.util.Map;
+
 import static com.webank.wedatasphere.exchangis.dss.appconn.constraints.Constraints.API_REQUEST_PREFIX;
 
 /**
@@ -42,6 +44,16 @@ public class ExchangisRefExecutionOperation
         postAction.setUser(submitUser);
         // Add exec user to request body
         postAction.addRequestPayload("execUser", execUser);
+
+        // P0 NEW: Extract DSS variables (workspace/project/node/runtime) and pass to Exchangis server
+        // P0 新增：从 DSS 上下文提取变量（workspace/project/node/runtime 全量变量）传给 Exchangis server
+        Map<String, Object> variables = executionRequestRef.getVariables();
+        if (variables != null && !variables.isEmpty()) {
+            postAction.addRequestPayload("variables", variables);
+            logger.info("Pass DSS variables to Exchangis server: jobId={}, variableKeys={}",
+                    id, variables.keySet());
+        }
+
         InternalResponseRef responseRef = ExchangisHttpUtils.getResponseRef(executionRequestRef, url, postAction, ssoRequestOperation);
         ExchangisExecutionAction action = new ExchangisExecutionAction();
         action.setExecId((String) responseRef.getData().get("jobExecutionId"));

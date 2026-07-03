@@ -13,6 +13,7 @@ import com.webank.wedatasphere.exchangis.job.exception.ExchangisJobServerExcepti
 import com.webank.wedatasphere.exchangis.job.server.service.JobInfoService;
 import com.webank.wedatasphere.exchangis.job.server.service.impl.DefaultJobExecuteService;
 import com.webank.wedatasphere.exchangis.job.server.utils.JobAuthorityUtils;
+import com.webank.wedatasphere.exchangis.job.utils.JobParamValidator;
 import com.webank.wedatasphere.exchangis.job.vo.ExchangisJobVo;
 import com.webank.wedatasphere.exchangis.project.provider.service.ProjectOpenService;
 import org.apache.commons.lang.StringUtils;
@@ -158,6 +159,15 @@ public class ExchangisJobDssAppConnRestfulApi {
             if (!JobAuthorityUtils.hasJobAuthority(loginUser, id, OperationType.JOB_ALTER)) {
                 return Message.error("You have no permission to update (没有更新任务权限)");
             }
+            // P1 NEW: validate jobParams key format and uniqueness
+            // P1 新增：校验 jobParams 的 key 格式和唯一性
+            try {
+                JobParamValidator.validateJobParams(exchangisJobVo.getJobParams());
+            } catch (IllegalArgumentException e) {
+                LOG.warn("Validate jobParams failed (校验 jobParams 失败): jobId={}, jobName={}, error={}",
+                        id, exchangisJobVo.getJobName(), e.getMessage());
+                return Message.error(e.getMessage());
+            }
             response.data("id", jobInfoService.updateJob(exchangisJobVo).getId());
         } catch (Exception e){
             String message = "Fail to update dss job: " + exchangisJobVo.getJobName() +" (更新DSS任务失败)";
@@ -200,6 +210,25 @@ public class ExchangisJobDssAppConnRestfulApi {
             jobInfo = new ExchangisJobInfo(jobVo);
             jobInfo.setName(jobVo.getJobName());
             jobInfo.setId(jobVo.getId());
+
+            // P0 NEW: Merge DSS variables (from appconn payload) into jobParamsMap
+            // P0 新增：将 DSS 变量（来自 appconn payload）合并到 jobParamsMap，DSS 覆盖静态配置
+            Object variablesObj = params.get("variables");
+            if (variablesObj instanceof Map) {
+                @SuppressWarnings("unchecked")
+                Map<String, Object> dssVariables = (Map<String, Object>) variablesObj;
+                // Filter system fields + validate key + Object->String
+                // 过滤系统字段 + 校验 key + Object 转 String
+                Map<String, String> mergedVariables = JobParamValidator.validateAndConvertParams(dssVariables);
+                if (!mergedVariables.isEmpty()) {
+                    LOG.debug("Before merge jobParamsMap: jobId={}, map={}", jobInfo.getId(), jobInfo.getJobParamsMap());
+                    // putAll: DSS overrides static (DSS 值覆盖静态 jobParams)
+                    jobInfo.getJobParamsMap().putAll(mergedVariables);
+                    LOG.info("Merge dss variables into jobParamsMap (合并DSS变量到jobParamsMap): jobId=[{}], mergedVariables=[{}], merged=[{}]",
+                            jobInfo.getId(), mergedVariables, jobInfo.getJobParamsMap());
+                }
+            }
+
             execUser = StringUtils.isNotBlank(execUser)? execUser : jobInfo.getExecuteUser();
             LOG.info("Execute dss job name: [{}], id: [{}], createUser: [{}], execUser: [{}], loginUser: [{}]",
                     jobInfo.getName(), jobInfo.getId(), jobInfo.getCreateUser(),
