@@ -13,6 +13,7 @@ import com.webank.wedatasphere.exchangis.job.domain.params.JobParams;
 import com.webank.wedatasphere.exchangis.job.exception.ExchangisJobException;
 import com.webank.wedatasphere.exchangis.job.exception.ExchangisJobExceptionCode;
 import com.webank.wedatasphere.exchangis.job.server.builder.transform.TransformExchangisJob;
+import com.webank.wedatasphere.exchangis.job.server.builder.transform.handlers.FileDataxSubExchangisJobHandler;
 import com.webank.wedatasphere.exchangis.job.server.render.transform.TransformTypes;
 import com.webank.wedatasphere.exchangis.common.util.json.JsonEntity;
 import com.webank.wedatasphere.exchangis.job.utils.MemUtils;
@@ -41,6 +42,9 @@ public class DataxExchangisEngineJobBuilder extends AbstractResourceEngineJobBui
         //hive use hdfs plugin resource
         PLUGIN_NAME_MAPPER.put("hive", "hdfs");
         PLUGIN_NAME_MAPPER.put("tdsql", "mysql");
+        // file source uses the datax txtfilereader plugin (file -> txtfile + "reader" = txtfilereader)
+        // 文件 source 走 datax txtfilereader 插件（file -> txtfile + "reader" = txtfilereader）
+        PLUGIN_NAME_MAPPER.put("file", "txtfile");
     }
 
     /**
@@ -155,6 +159,13 @@ public class DataxExchangisEngineJobBuilder extends AbstractResourceEngineJobBui
                 engineJob.setSourceId(dsContent.parseSourceId());
                 engineJob.setSinkId(dsContent.parseSinkId());
             }
+            // M2: file source BML resource injection (文件 source BML 资源注入)
+            // The handler stashes the file BML ref into jobParams; materialize it as an
+            // EngineBmlResource so the launcher serializes it into wds.linkis.engineconn.datax.bml.resources
+            // for DataxEngineConnLaunchBuilder.getBmlResources() to auto-download to the EC workdir.
+            if ("file".equalsIgnoreCase(inputJob.getSourceType())) {
+                settingFileSourceBmlResource(inputJob, engineJob);
+            }
             engineJob.setName(inputJob.getName());
             //Unit MB
             Optional.ofNullable(engineJob.getRuntimeParams().get(BYTE_SPEED_SETTING_PARAM)).ifPresent(byteLimit -> {
@@ -219,6 +230,48 @@ public class DataxExchangisEngineJobBuilder extends AbstractResourceEngineJobBui
                     codeResource.getResourceId(), codeResource.getVersion(), transformJob.getCreateUser()));
         });
     }
+
+    /**
+     * Inject the file source BML reference as an {@link EngineBmlResource} (M2).
+     *
+     * <p>The {@code FileDataxSubExchangisJobHandler} stashes the file BML ref (resourceId/version/
+     * owner/name) into {@code jobParams}. Here we materialize it as an {@code EngineBmlResource};
+     * the launcher then serializes {@code engineJob.getResources()} into
+     * {@code wds.linkis.engineconn.datax.bml.resources}, which {@code DataxEngineConnLaunchBuilder
+     * #getBmlResources()} reads to auto-download the file to the EC workdir. txtfilereader reads
+     * the file from the workdir local path — no engine plugin change needed.
+     *
+     * <p>{@code path="."} means Private visibility (only this job's EC can read the file).
+     *
+     * <p>handler 将文件 BML 引用暂存到 jobParams；此处物化为 {@link EngineBmlResource}，
+     * launcher 序列化为 {@code wds.linkis.engineconn.datax.bml.resources}，由 LaunchBuilder 自动下载到 EC 工作目录。
+     */
+    @SuppressWarnings("unchecked")
+    private void settingFileSourceBmlResource(SubExchangisJob inputJob, ExchangisEngineJob engineJob) {
+        Object stashed = inputJob.getJobParams().get(FileDataxSubExchangisJobHandler.FILE_BML_RESOURCE_KEY);
+        if (!(stashed instanceof Map)) {
+            LOG.warn("File source job missing stashed BML reference (文件 source 作业缺少暂存的 BML 引用): jobId={}", inputJob.getId());
+            return;
+        }
+        Map<String, Object> bmlRef = (Map<String, Object>) stashed;
+        String resourceId = bmlRef.get(FileDataxSubExchangisJobHandler.PARAM_BML_RESOURCE_ID) == null ? null
+                : String.valueOf(bmlRef.get(FileDataxSubExchangisJobHandler.PARAM_BML_RESOURCE_ID));
+        String version = bmlRef.get(FileDataxSubExchangisJobHandler.PARAM_BML_VERSION) == null ? null
+                : String.valueOf(bmlRef.get(FileDataxSubExchangisJobHandler.PARAM_BML_VERSION));
+        if (Objects.isNull(resourceId) || Objects.isNull(version)) {
+            LOG.warn("File source BML reference missing resourceId/version (BML 引用缺失 resourceId/version): jobId={}", inputJob.getId());
+            return;
+        }
+        String owner = bmlRef.get(FileDataxSubExchangisJobHandler.PARAM_BML_OWNER) == null
+                ? inputJob.getCreateUser()
+                : String.valueOf(bmlRef.get(FileDataxSubExchangisJobHandler.PARAM_BML_OWNER));
+        String name = bmlRef.get(FileDataxSubExchangisJobHandler.PARAM_BML_NAME) == null
+                ? resourceId : String.valueOf(bmlRef.get(FileDataxSubExchangisJobHandler.PARAM_BML_NAME));
+        // path="." -> Private visibility (only this job's EC can read the file)
+        engineJob.getResources().add(new EngineBmlResource(engineJob.getEngineType(), ".", name, resourceId, version, owner));
+        LOG.info("File source BML resource injected (文件 source BML 资源已注入): jobId={}, name={}, resourceId={}", inputJob.getId(), name, resourceId);
+    }
+
     private String[] getResourcesPaths(SubExchangisJob inputJob){
         return new String[]{
                 DataxEngineResourceConf.RESOURCE_PATH_PREFIX.getValue() + IOUtils.DIR_SEPARATOR_UNIX + "reader" + IOUtils.DIR_SEPARATOR_UNIX +
