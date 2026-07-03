@@ -66,6 +66,13 @@
             <artifactId>modelmapper</artifactId>
             <version>2.4.3</version>
         </dependency>
+        <!-- ICU4J: charset detection for file source streaming parse (BOM -> ICU4J -> UTF-8) -->
+        <!-- ICU4J is the same encoding-detection engine used by Apache Tika, but lighter than tika-parsers -->
+        <dependency>
+            <groupId>com.ibm.icu</groupId>
+            <artifactId>icu4j</artifactId>
+            <version>71.1</version>
+        </dependency>
     </dependencies>
 
     <build>
