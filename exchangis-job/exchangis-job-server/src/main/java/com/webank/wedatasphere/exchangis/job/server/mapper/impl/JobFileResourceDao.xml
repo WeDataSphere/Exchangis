@@ -1,0 +1,91 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.webank.wedatasphere.exchangis.job.server.mapper.JobFileResourceDao">
+
+    <resultMap id="JobFileResourceMap" type="com.webank.wedatasphere.exchangis.job.server.domain.JobFileResource">
+        <id column="id" property="id"/>
+        <result column="job_id" property="jobId"/>
+        <result column="file_name" property="fileName"/>
+        <result column="file_size" property="fileSize"/>
+        <result column="file_type" property="fileType"/>
+        <result column="encoding" property="encoding"/>
+        <result column="separator" property="separator"/>
+        <result column="has_header" property="hasHeader"/>
+        <result column="bml_resource_id" property="bmlResourceId"/>
+        <result column="bml_version" property="bmlVersion"/>
+        <result column="owner" property="owner"/>
+        <result column="parse_result" property="parseResult"/>
+        <result column="create_time" property="createTime"/>
+        <result column="update_time" property="updateTime"/>
+    </resultMap>
+
+    <sql id="TableName">
+        exchangis_job_file_resources
+    </sql>
+
+    <sql id="BaseColumnList">
+        id, job_id, file_name, file_size, file_type, encoding, separator, has_header,
+        bml_resource_id, bml_version, owner, parse_result, create_time, update_time
+    </sql>
+
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id"
+            parameterType="com.webank.wedatasphere.exchangis.job.server.domain.JobFileResource">
+        INSERT INTO
+        <include refid="TableName"/>
+        (job_id, file_name, file_size, file_type, encoding, separator, has_header,
+         bml_resource_id, bml_version, owner, parse_result)
+        VALUES (
+        #{jobId},
+        #{fileName},
+        #{fileSize},
+        #{fileType},
+        #{encoding},
+        #{separator},
+        #{hasHeader},
+        #{bmlResourceId},
+        #{bmlVersion},
+        #{owner},
+        #{parseResult}
+        )
+    </insert>
+
+    <select id="getByJobId" parameterType="java.lang.Long" resultMap="JobFileResourceMap">
+        SELECT
+        <include refid="BaseColumnList"/>
+        FROM
+        <include refid="TableName"/>
+        WHERE job_id = #{jobId}
+        LIMIT 1
+    </select>
+
+    <select id="getByResourceId" parameterType="java.lang.String" resultMap="JobFileResourceMap">
+        SELECT
+        <include refid="BaseColumnList"/>
+        FROM
+        <include refid="TableName"/>
+        WHERE bml_resource_id = #{bmlResourceId}
+        ORDER BY id DESC
+        LIMIT 1
+    </select>
+
+    <update id="updateVersion" parameterType="com.webank.wedatasphere.exchangis.job.server.domain.JobFileResource">
+        UPDATE
+        <include refid="TableName"/>
+        SET
+        bml_version = #{bmlVersion},
+        file_size = #{fileSize},
+        encoding = #{encoding},
+        separator = #{separator},
+        has_header = #{hasHeader},
+        parse_result = #{parseResult},
+        update_time = CURRENT_TIMESTAMP
+        WHERE bml_resource_id = #{bmlResourceId}
+    </update>
+
+    <delete id="deleteByJobId" parameterType="java.lang.Long">
+        DELETE FROM
+        <include refid="TableName"/>
+        WHERE job_id = #{jobId}
+    </delete>
+
+</mapper>
