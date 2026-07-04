@@ -15,12 +15,14 @@ import com.webank.wedatasphere.exchangis.job.server.render.transform.TransformRe
 import com.webank.wedatasphere.exchangis.job.server.render.transform.TransformSettings;
 import com.webank.wedatasphere.exchangis.job.server.render.transform.FileColumnVo;
 import com.webank.wedatasphere.exchangis.job.server.render.transform.field.FieldColumn;
+import com.webank.wedatasphere.exchangis.job.server.render.transform.field.mapping.infer.FieldTypeInfererManager;
 import com.webank.wedatasphere.exchangis.job.server.render.transform.field.mapping.match.FieldAllMatchIgnoreCaseStrategy;
 import com.webank.wedatasphere.exchangis.job.server.render.transform.field.mapping.match.FieldAllMatchStrategy;
 import com.webank.wedatasphere.exchangis.job.server.render.transform.field.mapping.match.FieldColumnMatch;
 import com.webank.wedatasphere.exchangis.job.server.render.transform.field.mapping.match.FieldMatchStrategy;
 import com.webank.wedatasphere.exchangis.utils.SpringContextHolder;
 import com.webank.wedatasphere.exchangis.project.provider.service.ProjectOpenService;
+import org.apache.commons.lang3.StringUtils;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -58,13 +60,21 @@ public class FieldMappingTransformer implements Transformer {
      * Data source context
      */
     private final ExchangisDataSourceContext dsContext;
+
+    /**
+     * Field type inferer manager (字段类型推断器管理器)
+     */
+    private final FieldTypeInfererManager fieldTypeInfererManager;
+
     public FieldMappingTransformer(FieldMappingRulesFusion rulesFusion,
                                    JobTransformRuleDao transformRuleDao,
-                                   ExchangisDataSourceContext dataSourceContext, ProjectOpenService projectOpenService){
+                                   ExchangisDataSourceContext dataSourceContext, ProjectOpenService projectOpenService,
+                                   FieldTypeInfererManager fieldTypeInfererManager){
         this.rulesFusion = rulesFusion;
         this.transformRuleDao = transformRuleDao;
         this.dsContext = dataSourceContext;
         this.projectOpenService = projectOpenService;
+        this.fieldTypeInfererManager = fieldTypeInfererManager;
     }
 
     @Override
@@ -170,17 +180,21 @@ public class FieldMappingTransformer implements Transformer {
         }
         settings.setSinkFields(sinkColumns);
         if (sourceColumns.size() > 0 && requestVo.isSinkTblNotExist()){
-            // Redefine sink columns
+            // Redefine sink columns (重建汇侧列：源表存在、目的表不存在时，按源列推断汇侧字段类型)
             sinkColumns = new ArrayList<>();
             for(FieldColumn column : sourceColumns){
-                sinkColumns.add(new FieldColumnWrapper(column.getName(), AutoColumnSubExchangisJobHandler.AUTO_TYPE, null, true));
+                sinkColumns.add(new FieldColumnWrapper(column.getName(),
+                        inferFieldType(requestVo.getSourceTypeId(), requestVo.getSinkTypeId(), column.getType()),
+                        null, true));
             }
         }
         if (sinkColumns.size() > 0 && requestVo.isSrcTblNotExist()){
-            // Redefine sink columns
+            // Redefine sink columns (重建源侧列：目的表存在、源表不存在时，按汇列推断源侧字段类型)
             sourceColumns = new ArrayList<>();
             for(FieldColumn column : sinkColumns){
-                sourceColumns.add(new FieldColumnWrapper(column.getName(), AutoColumnSubExchangisJobHandler.AUTO_TYPE, null, true));
+                sourceColumns.add(new FieldColumnWrapper(column.getName(),
+                        inferFieldType(requestVo.getSinkTypeId(), requestVo.getSourceTypeId(), column.getType()),
+                        null, true));
             }
         }
         FieldMatchStrategy matchStrategy = rule.getFieldMatchStrategy();
@@ -227,6 +241,28 @@ public class FieldMappingTransformer implements Transformer {
             this.metadataInfoService = SpringContextHolder.getBean(MetadataInfoService.class);
         }
         return this.metadataInfoService;
+    }
+
+    /**
+     * Infer the target field type for the non-existent side, falling back to {@code AUTO_TYPE}
+     * when no inferer is registered for the given {@code (fromType, toType)} pair.
+     * (为不存在的一侧推断目标字段类型；若该 {@code (fromType, toType)} 类型对未注册推断器，回退到 {@code AUTO_TYPE}。)
+     *
+     * <p>Direction contract: {@code inferFieldType(A, B, columnType)} means "given an A-side
+     * column of type {@code columnType}, infer the B-side field type". For the source-not-exist
+     * case, swap the arguments so the second parameter is always the side to be inferred.
+     * (方向约定：{@code inferFieldType(A, B, columnType)} 表示「已知 A 侧字段类型为 columnType，推断 B 侧字段类型」。
+     * 源表不存在场景下需交换参数，使第二参数始终为待推断侧。)</p>
+     *
+     * @param fromType    "from" data source type id (起始数据源类型)
+     * @param toType      "to" data source type id to infer (待推断的目标数据源类型)
+     * @param columnType  column type from the "from" side (起始侧字段类型)
+     * @return inferred target field type, or {@code AUTO_TYPE} if no inferer matches
+     *         (推断的目标字段类型，无匹配推断器时返回 {@code AUTO_TYPE})
+     */
+    private String inferFieldType(String fromType, String toType, String columnType){
+        String inferred = fieldTypeInfererManager.infer(fromType, toType, columnType);
+        return StringUtils.isNotBlank(inferred) ? inferred : AutoColumnSubExchangisJobHandler.AUTO_TYPE;
     }
     public static class FieldColumnWrapper extends FieldColumn{
         /**

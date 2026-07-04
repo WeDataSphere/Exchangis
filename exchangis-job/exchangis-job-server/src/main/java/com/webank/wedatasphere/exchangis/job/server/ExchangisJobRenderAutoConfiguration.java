@@ -8,6 +8,7 @@ import com.webank.wedatasphere.exchangis.job.server.render.transform.field.mappi
 import com.webank.wedatasphere.exchangis.job.server.render.transform.def.DefaultTransformDefineRulesFusion;
 import com.webank.wedatasphere.exchangis.job.server.render.transform.field.mapping.DefaultFieldMappingRulesFusion;
 import com.webank.wedatasphere.exchangis.job.server.render.transform.field.mapping.FieldMappingTransformer;
+import com.webank.wedatasphere.exchangis.job.server.render.transform.field.mapping.infer.FieldTypeInfererManager;
 import com.webank.wedatasphere.exchangis.job.server.render.transform.processor.ProcessorTransformer;
 import com.webank.wedatasphere.exchangis.project.provider.service.ProjectOpenService;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
@@ -58,13 +59,15 @@ public class ExchangisJobRenderAutoConfiguration {
      * @param rulesFusion rule fusion
      * @param transformRuleDao transform rule dao
      * @param projectOpenService project service
+     * @param fieldTypeInfererManager field type inferer manager (字段类型推断器管理器)
      * @return transformer
      */
     @Bean
     public FieldMappingTransformer fieldMappingTransformer(FieldMappingRulesFusion rulesFusion,
                                                            JobTransformRuleDao transformRuleDao,
-                                                           ExchangisDataSourceContext dsContext, ProjectOpenService projectOpenService){
-        return new FieldMappingTransformer(rulesFusion, transformRuleDao, dsContext, projectOpenService);
+                                                           ExchangisDataSourceContext dsContext, ProjectOpenService projectOpenService,
+                                                           FieldTypeInfererManager fieldTypeInfererManager){
+        return new FieldMappingTransformer(rulesFusion, transformRuleDao, dsContext, projectOpenService, fieldTypeInfererManager);
     }
     /**
      * Processor transformer
