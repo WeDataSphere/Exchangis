@@ -275,11 +275,38 @@ public class DataxExchangisEngineJobBuilder extends AbstractResourceEngineJobBui
     private String[] getResourcesPaths(SubExchangisJob inputJob){
         return new String[]{
                 DataxEngineResourceConf.RESOURCE_PATH_PREFIX.getValue() + IOUtils.DIR_SEPARATOR_UNIX + "reader" + IOUtils.DIR_SEPARATOR_UNIX +
-                        PLUGIN_SOURCE_NAME.getValue(inputJob),
+                        toResourcePathName(PLUGIN_SOURCE_NAME.getValue(inputJob)),
                 DataxEngineResourceConf.RESOURCE_PATH_PREFIX.getValue() + IOUtils.DIR_SEPARATOR_UNIX + "writer" + IOUtils.DIR_SEPARATOR_UNIX +
-                        PLUGIN_SINK_NAME.getValue(inputJob)
+                        toResourcePathName(PLUGIN_SINK_NAME.getValue(inputJob))
         };
     }
+
+    /**
+     * Map the datax plugin name to its actual resource storage path directory name.
+     *
+     * <p>The txtfilereader/txtfilewriter plugins are stored under textfilereader/textfilewriter
+     * in the resource path (naming inconsistency between the datax plugin name and the resource
+     * storage directory). The datax config still uses txtfilereader/txtfilewriter as the
+     * reader/writer name (see {@link #PLUGIN_SOURCE_NAME} / {@link #PLUGIN_SINK_NAME}); only the
+     * resource path lookup needs the actual directory name.
+     *
+     * <p>txtfilereader/txtfilewriter 插件在资源存储路径下的实际目录是 textfilereader/textfilewriter
+     * （datax 插件名与资源存储目录名不一致）。datax 配置仍用 txtfilereader/txtfilewriter 作为
+     * reader/writer name，仅资源路径查找需用实际目录名。
+     *
+     * @param pluginName datax plugin name (e.g. txtfilereader)
+     * @return resource path directory name (e.g. textfilereader)
+     */
+    private static String toResourcePathName(String pluginName) {
+        if ("txtfilereader".equals(pluginName)) {
+            return "textfilereader";
+        }
+        if ("txtfilewriter".equals(pluginName)) {
+            return "textfilewriter";
+        }
+        return pluginName;
+    }
+
     // core.processor.loader.plugin.sourcePath
     /**
      * Plugin name
