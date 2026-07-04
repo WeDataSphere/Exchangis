@@ -118,7 +118,28 @@ public abstract class AbstractDataSourceService extends AbstractLinkisDataSource
         ExchangisDataSourceIdsUI dataSourceIdsUI = buildDataSourceIdsUI(request, content);
 
         // ----------- 构建 dataSourceParamsUI
+        // 先走标准表查询重建（sink 始终走该逻辑；FILE source 因无 param config 注册会得到空 source list）
+        // Standard table-based rebuild first (sink always uses this; FILE source gets an empty
+        // source list because no param config is registered for it).
         ExchangisDataSourceParamsUI paramsUI = buildDataSourceParamsUI(dataSourceIdsUI, content);
+
+        // ⭐ REQ-01: 文件 source 无 ExchangisJobParamConfig 注册（M5 决策），表查询重建会返回空 source list，
+        //   导致 getDecoratedJob 用空 params 覆盖原始 jobContent，前端编辑态无法回显
+        //   encoding/delimiter/nullFormat 及 __file_bml_* BML 引用。此处对 FILE source 直接从原始
+        //   content 透传 params.sources（config_key 格式 → InputElementUI），保留全部 7 项及用户改过的值。
+        //   非 FILE 类型不进入此分支，零影响。
+        //   File source has no param config registration (M5); table-based rebuild returns an empty
+        //   source list, which overwrites the original jobContent via getDecoratedJob, so the frontend
+        //   cannot restore encoding/delimiter/nullFormat and __file_bml_* BML references. Here we
+        //   pass through params.sources directly from the original content for FILE (config_key
+        //   format → InputElementUI), preserving all 7 items and user-edited values.
+        //   Non-FILE types never enter this branch — zero impact.
+        if (Objects.nonNull(dataSourceIdsUI) && Objects.nonNull(dataSourceIdsUI.getSource())) {
+            String sourceType = dataSourceIdsUI.getSource().getType();
+            if ("FILE".equalsIgnoreCase(sourceType)) {
+                paramsUI.setSources(buildFileSourceParamsUIFromContent(content));
+            }
+        }
 
         // ----------- 构建 dataSourceTransformsUI
         ExchangisJobTransformsContent transforms = content.getTransforms();
@@ -126,6 +147,65 @@ public abstract class AbstractDataSourceService extends AbstractLinkisDataSource
         List<ElementUI<?>> jobDataSourceSettingsUI = this.buildJobSettingsUI(job.getEngineType(), content);
 
         return new DefaultDataSourceUIViewer(content.getSubJobName(), dataSourceIdsUI, paramsUI, transforms, jobDataSourceSettingsUI);
+    }
+
+    /**
+     * 文件 source 的 params.sources 透传构建（REQ-01）。
+     * <p>
+     * FILE 类型在 exchangis_job_param_config 表无注册（M5 决策），无法走标准的
+     * buildDataSourceParamsFilledValueUI 重建流程（会得到空 list）。本方法直接从原始
+     * content.getParams().getSources() 读取已保存的 config_key 格式参数项，逐个转换为
+     * InputElementUI，确保以下 7 项全部保留且值正确：
+     *   - __file_bml_resource_id / __file_bml_version / __file_bml_owner / __file_bml_name（BML 引用，hidden）
+     *   - encoding / delimiter / nullFormat（用户可编辑）
+     * <p>
+     * __file_bml_* 为 hidden 参数：InputElementUI 无 show/hidden 字段，原样保留——前端按
+     * "__file_bml_" 前缀识别（设计文档 §9），不会渲染但进入保存 payload。
+     * <p>
+     * File source params.sources passthrough builder (REQ-01).
+     * FILE type has no registration in the exchangis_job_param_config table (M5 decision), so it
+     * cannot go through the standard buildDataSourceParamsFilledValueUI rebuild (which yields an
+     * empty list). This method reads the saved config_key-format params directly from the original
+     * content.getParams().getSources() and converts each to an InputElementUI, ensuring all 7
+     * items are preserved with correct values:
+     *   - __file_bml_resource_id / __file_bml_version / __file_bml_owner / __file_bml_name (BML refs, hidden)
+     *   - encoding / delimiter / nullFormat (user-editable)
+     * <p>
+     * __file_bml_* are hidden params: InputElementUI has no show/hidden field, so they are kept
+     * as-is — the frontend recognizes them by the "__file_bml_" prefix (design §9); they are not
+     * rendered but remain in the save payload.
+     *
+     * @param content job info content
+     * @return source params UI list (config_key → InputElementUI)
+     */
+    private List<ElementUI<?>> buildFileSourceParamsUIFromContent(ExchangisJobInfoContent content) {
+        List<ElementUI<?>> sourceUIs = new ArrayList<>();
+        if (Objects.isNull(content) || Objects.isNull(content.getParams())) {
+            return sourceUIs;
+        }
+        List<ExchangisJobParamsContent.ExchangisJobParamsItem> sources = content.getParams().getSources();
+        if (Objects.isNull(sources) || sources.isEmpty()) {
+            return sourceUIs;
+        }
+        for (ExchangisJobParamsContent.ExchangisJobParamsItem item : sources) {
+            if (Objects.isNull(item)) {
+                continue;
+            }
+            InputElementUI ui = new InputElementUI();
+            // key/field 均设为 configKey，前端可按 key 或 config_key 读取
+            // Set both key and field to configKey so the frontend can read by either key or config_key
+            ui.setKey(item.getConfigKey());
+            ui.setField(item.getConfigKey());
+            ui.setLabel(item.getConfigName());
+            // configValue 为 Object 类型，转为 String 供 InputElementUI.value 使用；null 转空串
+            // configValue is Object; convert to String for InputElementUI.value; null → empty string
+            Object configValue = item.getConfigValue();
+            String valueStr = Objects.nonNull(configValue) ? String.valueOf(configValue) : "";
+            ui.setValue(valueStr);
+            ui.setSort(item.getSort());
+            sourceUIs.add(ui);
+        }
+        return sourceUIs;
     }
 
 
