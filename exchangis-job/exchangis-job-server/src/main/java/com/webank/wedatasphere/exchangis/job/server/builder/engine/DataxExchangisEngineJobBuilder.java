@@ -268,8 +268,16 @@ public class DataxExchangisEngineJobBuilder extends AbstractResourceEngineJobBui
         String name = bmlRef.get(FileDataxSubExchangisJobHandler.PARAM_BML_NAME) == null
                 ? resourceId : String.valueOf(bmlRef.get(FileDataxSubExchangisJobHandler.PARAM_BML_NAME));
         // path="." -> Private visibility (only this job's EC can read the file)
-        engineJob.getResources().add(new EngineBmlResource(engineJob.getEngineType(), ".", name, resourceId, version, owner));
-        LOG.info("File source BML resource injected (文件 source BML 资源已注入): jobId={}, name={}, resourceId={}", inputJob.getId(), name, resourceId);
+        // name = <basePath>/<name> -> the EC downloads the file to <workdir>/<basePath>/<name>,
+        //   and txtfilereader reads from path=<basePath> (set in FileDataxSubExchangisJobHandler).
+        //   Mirrors the PROCESSOR_BASE_PATH pattern in settingProcessorInfo.
+        //   name = <basePath>/<name> -> EC 将文件下载到 <workdir>/<basePath>/<name>，
+        //   txtfilereader 从 path=<basePath> 读取（在 FileDataxSubExchangisJobHandler 中设置）。仿 settingProcessorInfo 的 PROCESSOR_BASE_PATH 模式。
+        String basePath = FileDataxSubExchangisJobHandler.FILE_BASE_PATH.getValue();
+        engineJob.getResources().add(new EngineBmlResource(engineJob.getEngineType(), ".",
+                basePath + IOUtils.DIR_SEPARATOR_UNIX + name, resourceId, version, owner));
+        LOG.info("File source BML resource injected (文件 source BML 资源已注入): jobId={}, basePath={}, name={}, resourceId={}",
+                inputJob.getId(), basePath, name, resourceId);
     }
 
     private String[] getResourcesPaths(SubExchangisJob inputJob){

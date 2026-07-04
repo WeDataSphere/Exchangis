@@ -6,6 +6,7 @@ import com.webank.wedatasphere.exchangis.job.domain.params.JobParamDefine;
 import com.webank.wedatasphere.exchangis.job.domain.params.JobParamSet;
 import com.webank.wedatasphere.exchangis.job.domain.params.JobParams;
 import com.webank.wedatasphere.exchangis.job.server.builder.JobParamConstraints;
+import org.apache.linkis.common.conf.CommonVars;
 import org.apache.linkis.common.exception.ErrorException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -34,13 +35,14 @@ import java.util.Objects;
  *       {@link JobParams#define(String)} and stay in the source param set; txtfilereader ignores
  *       these unknown keys, so no manual get+remove is needed.</li>
  *   <li>txtfilereader params ({@code path}/{@code encoding}/{@code delimiter}/{@code nullFormat})
- *       are real reader keys. {@code path} is set to the BML file name (the file the EC downloads
- *       to its workdir); the others are sent by the frontend from the parse result.</li>
+ *       are real reader keys. {@code path} is set to {@link #FILE_BASE_PATH} (the subdirectory under
+ *       the EC workdir where the BML resource is downloaded); the others are sent by the frontend
+ *       from the parse result.</li>
  * </ul>
  *
  * <p>BML 引用参数以 {@code __file_bml_} 前缀命名空间隔离，用 {@link JobParams#define(String)} 读取，
  * 保留在 source 参数集中（txtfilereader 忽略未知键，无需 get+remove）。txtfilereader 参数
- * （path/encoding/delimiter/nullFormat）为真实 reader 键，path 设为 BML 文件名。
+ * （path/encoding/delimiter/nullFormat）为真实 reader 键，path 设为 FILE_BASE_PATH（EC 工作目录下 BML 资源下载到的子目录）。
  *
  * <h2>BML injection adaptation (BML 注入适配)</h2>
  * The design doc describes writing a plain-JSON {@code wds.linkis.engineconn.datax.bml.resources} job
@@ -60,6 +62,23 @@ import java.util.Objects;
 public class FileDataxSubExchangisJobHandler extends AuthEnabledSubExchangisJobHandler {
 
     private static final Logger LOG = LoggerFactory.getLogger(FileDataxSubExchangisJobHandler.class);
+
+    /**
+     * Base path (subdirectory under the EC workdir) where file source BML resources are downloaded
+     * and from which txtfilereader reads. Mirrors the {@code PROCESSOR_BASE_PATH} pattern in
+     * {@code DataxExchangisEngineJobBuilder.settingProcessorInfo}. Default "fileSets".
+     *
+     * <p>The engine builder downloads the BML resource to {@code <EC workdir>/<FILE_BASE_PATH>/<name>}
+     * (it prefixes the resource name with this base path), and txtfilereader's {@code path} param
+     * is set to this value so it reads from that subdirectory.
+     *
+     * <p>EC 工作目录下文件 source BML 资源下载到的子目录，txtfilereader 从此目录读取。
+     * 仿 {@code DataxExchangisEngineJobBuilder.settingProcessorInfo} 的 {@code PROCESSOR_BASE_PATH} 模式，
+     * 默认 "fileSets"。引擎 builder 将 BML 资源下载到 {@code <EC workdir>/<FILE_BASE_PATH>/<name>}
+     * （给资源名加此前缀），txtfilereader 的 path 参数设为此值，从该子目录读取。
+     */
+    public static final CommonVars<String> FILE_BASE_PATH =
+            CommonVars.apply("wds.exchangis.file-source.base-path", "fileSets");
 
     /**
      * Job param key used to stash the file BML reference for the engine builder.
@@ -116,12 +135,12 @@ public class FileDataxSubExchangisJobHandler extends AuthEnabledSubExchangisJobH
             LOG.info("File source BML reference stashed (文件 source BML 引用已暂存): name={}, resourceId={}, version={}",
                     name, resourceId, version);
 
-            // 3. path = BML file name. The EC downloads the BML resource to its workdir (PWD) using
-            //    this name, and txtfilereader reads the file by this path.
-            //    path = BML 文件名。EC 将 BML 资源下载到工作目录（PWD）后，txtfilereader 按此 path 读取。
-            if (Objects.nonNull(name)) {
-                paramSet.add(JobParams.newOne(PARAM_PATH, name));
-            }
+            // 3. path = FILE_BASE_PATH. The engine builder downloads the BML resource to
+            //    <EC workdir>/<FILE_BASE_PATH>/<name> (prefixing the resource name with FILE_BASE_PATH),
+            //    and txtfilereader reads from this subdirectory. Mirrors PROCESSOR_BASE_PATH.
+            //    path = FILE_BASE_PATH。引擎 builder 将 BML 资源下载到 <EC workdir>/<FILE_BASE_PATH>/<name>
+            //    （给资源名加 FILE_BASE_PATH 前缀），txtfilereader 从此子目录读取。仿 PROCESSOR_BASE_PATH。
+            paramSet.add(JobParams.newOne(PARAM_PATH, FILE_BASE_PATH.getValue()));
         } else {
             LOG.warn("File source handler: missing resourceId/version in source params (source 参数缺失 resourceId/version)");
         }
