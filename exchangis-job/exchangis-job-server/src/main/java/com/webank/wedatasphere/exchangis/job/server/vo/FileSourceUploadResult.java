@@ -23,6 +23,15 @@ public class FileSourceUploadResult {
     private String version;
 
     /**
+     * BML owner/creator (the uploading user, i.e. the current login user).
+     * Frontend needs this to build the {@code __file_bml_owner} job source param.
+     *
+     * BML 所有者/创建者（上传用户，即当前登录用户）。
+     * 前端据此构造作业 source 参数 {@code __file_bml_owner}。
+     */
+    private String owner;
+
+    /**
      * File parse result (解析结果)
      */
     private FileParseResult fileParseResult;
@@ -41,6 +50,14 @@ public class FileSourceUploadResult {
 
     public void setVersion(String version) {
         this.version = version;
+    }
+
+    public String getOwner() {
+        return owner;
+    }
+
+    public void setOwner(String owner) {
+        this.owner = owner;
     }
 
     public FileParseResult getFileParseResult() {

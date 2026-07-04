@@ -137,6 +137,9 @@ public class JobFileSourceServiceImpl implements JobFileSourceService {
             FileSourceUploadResult result = new FileSourceUploadResult();
             result.setResourceId(resourceId);
             result.setVersion(version);
+            // owner = operator (the uploading user); BML records it as the resource owner
+            // owner = operator（上传用户），BML 以此作为资源所有者
+            result.setOwner(operator);
             result.setFileParseResult(parseResult);
             return result;
         } catch (IOException e) {

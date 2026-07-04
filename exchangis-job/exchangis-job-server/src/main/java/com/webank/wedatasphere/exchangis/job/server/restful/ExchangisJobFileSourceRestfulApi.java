@@ -63,6 +63,7 @@ public class ExchangisJobFileSourceRestfulApi {
             FileSourceUploadResult result = jobFileSourceService.uploadAndParse(userName, fileName, file, jobId);
             response.data("resourceId", result.getResourceId());
             response.data("version", result.getVersion());
+            response.data("owner", result.getOwner());
             response.data("fileParseResult", Json.convert(result.getFileParseResult(), Map.class, String.class, Object.class));
         } catch (FileSourceParseException e) {
             // Fail fast (编码/格式/文件头异常): return a structured error with the error code.
