@@ -41,6 +41,20 @@ public class GenericSubExchangisJobHandler extends AbstractLoggingSubExchangisJo
 
     @Override
     public void handleJobSource(SubExchangisJob subExchangisJob, ExchangisJobBuilderContext ctx) throws ErrorException {
+        // ⭐ REQ-01 / M5: 文件 source 不走数据源管理流程，无数据源实例，不应调用 appendDataSourceParams。
+        //    默认 handler 链会被加到每个 source chain 头部（见 GenericExchangisTransformJobBuilder.initHandlers），
+        //    所以 FILE source 也会先进入这里。若放行，appendDataSourceParams 会以 FILE 的占位 id（如 0）
+        //    调 getDataSourceConnectParamsById，污染 sourceParamSet 或抛错。文件 source 的参数
+        //    （__file_bml_* + encoding/delimiter/nullFormat）已由前端随 source params 下发，由
+        //    FileDataxSubExchangisJobHandler 处理，无需追加数据源连接参数。
+        //    File source doesn't go through datasource management (M5); no datasource instance.
+        //    The default handler chain is prepended to every source chain, so FILE source reaches here too.
+        //    Skipping appendDataSourceParams avoids querying connect params with FILE's placeholder id
+        //    (e.g. 0), which would pollute sourceParamSet or throw. File source params are sent by the
+        //    frontend and handled by FileDataxSubExchangisJobHandler — no datasource connect params needed.
+        if ("FILE".equalsIgnoreCase(subExchangisJob.getSourceType())) {
+            return;
+        }
         ExchangisJobInfo originJob = ctx.getOriginalJob();
         JobParamSet idParamSet = subExchangisJob.getRealmParams(SubExchangisJob.REALM_JOB_DATA_SOURCE);
         JobParamSet sourceParamSet = subExchangisJob.getRealmParams(SubExchangisJob.REALM_JOB_CONTENT_SOURCE);
