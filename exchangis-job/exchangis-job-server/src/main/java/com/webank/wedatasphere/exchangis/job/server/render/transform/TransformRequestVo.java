@@ -3,6 +3,7 @@ package com.webank.wedatasphere.exchangis.job.server.render.transform;
 
 import javax.validation.constraints.NotNull;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 public class TransformRequestVo {
@@ -18,9 +19,11 @@ public class TransformRequestVo {
     private String sourceTypeId;
 
     /**
-     * Data source id (source direction)
+     * Data source id (source direction).
+     * ⚠️ Required for normal datasource types; OPTIONAL for sourceTypeId == "file"
+     *    (file source has no datasource instance per M5).
+     * 普通数据源类型必填；sourceTypeId == "file" 时无需（M5 解耦，文件不创建数据源实例）。
      */
-    @NotNull(message = "source id cannot be null (来源数据源ID不能为空）")
     private Long sourceDataSourceId;
     /**
      * Database (source direction)
@@ -36,6 +39,28 @@ public class TransformRequestVo {
      * Table (source) not exist
      */
     private boolean srcTblNotExist = false;
+
+    /**
+     * File source columns (only used when sourceTypeId == "file").
+     * Provided by frontend from the upload parse result (FileParseResult.columns),
+     * possibly with user-edited inferred types (M4 "推断结果 UI 可见可改").
+     *
+     * 文件 source 列定义（仅 sourceTypeId == "file" 时使用）。
+     * 由前端从上传解析结果携带（可能含用户在 UI 上修改过的推断类型 M4）。
+     */
+    private List<FileColumnVo> sourceFileColumns;
+
+    /**
+     * BML resource id of the uploaded file (optional, for audit/traceability when sourceTypeId == "file").
+     * 文件 BML 资源 ID（sourceTypeId == "file" 时可选，用于审计/追溯）。
+     */
+    private String sourceBmlResourceId;
+
+    /**
+     * BML version of the uploaded file (optional, paired with sourceBmlResourceId).
+     * 文件 BML 版本（与 sourceBmlResourceId 配对，可选）。
+     */
+    private String sourceBmlVersion;
 
     /**
      * Sink type id
@@ -174,5 +199,29 @@ public class TransformRequestVo {
 
     public boolean isSinkTblNotExist() {
         return sinkTblNotExist;
+    }
+
+    public List<FileColumnVo> getSourceFileColumns() {
+        return sourceFileColumns;
+    }
+
+    public void setSourceFileColumns(List<FileColumnVo> sourceFileColumns) {
+        this.sourceFileColumns = sourceFileColumns;
+    }
+
+    public String getSourceBmlResourceId() {
+        return sourceBmlResourceId;
+    }
+
+    public void setSourceBmlResourceId(String sourceBmlResourceId) {
+        this.sourceBmlResourceId = sourceBmlResourceId;
+    }
+
+    public String getSourceBmlVersion() {
+        return sourceBmlVersion;
+    }
+
+    public void setSourceBmlVersion(String sourceBmlVersion) {
+        this.sourceBmlVersion = sourceBmlVersion;
     }
 }

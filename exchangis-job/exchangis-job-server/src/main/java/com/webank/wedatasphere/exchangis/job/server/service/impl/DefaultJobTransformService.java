@@ -49,6 +49,29 @@ public class DefaultJobTransformService implements JobTransformService {
     @Override
     public Map<String, TransformSettings> getSettings(TransformRequestVo requestVo) {
         Map<String, TransformSettings> settingsMap = new HashMap<>();
+        // ⭐ G1-service: conditional required validation (replaces original @NotNull on sourceDataSourceId).
+        //    file source has no datasource instance per M5, so sourceDataSourceId is optional;
+        //    non-file types still require it (equivalent to the original @NotNull behavior).
+        //    条件必填校验（替代原 sourceDataSourceId 上的 @NotNull）：
+        //    file source 按 M5 不创建数据源实例，sourceDataSourceId 可选；
+        //    非 file 类型仍必填（行为与原 @NotNull 等价）。
+        boolean isFileSource = "file".equalsIgnoreCase(requestVo.getSourceTypeId());
+        if (!isFileSource && requestVo.getSourceDataSourceId() == null) {
+            throw new IllegalArgumentException("sourceDataSourceId cannot be null for non-file source (非文件来源 sourceDataSourceId 不能为空)");
+        }
+        // ⭐ G2-b: file source skips fuse and directly invokes the MAPPING transformer.
+        //    File source has no ExchangisDataSourceDefinition (M5), so avoid querying the source
+        //    Define and the fuse step; field-mapping is the only transform needed for file source.
+        //    文件 source 跳过 fuse，直接调用 MAPPING transformer。
+        //    文件 source 无 ExchangisDataSourceDefinition（M5），不查 source Define、不走 fuse；
+        //    field-mapping 是文件 source 唯一需要的 transform。
+        if (isFileSource) {
+            Transformer transformer = this.transformerContainer.getTransformer(TransformTypes.MAPPING.name());
+            if (Objects.nonNull(transformer)) {
+                settingsMap.put(TransformTypes.MAPPING.name(), transformer.getSettings(requestVo));
+            }
+            return settingsMap;
+        }
         // First to get the definition rule to select transformers
         TransformDefine sourceDefine = getTransformDefineRule(requestVo.getSourceTypeId(), requestVo.getEngine(), TransformRule.Direction.SOURCE.name());
         TransformDefine sinkDefine = getTransformDefineRule(requestVo.getSinkTypeId(), requestVo.getEngine(), TransformRule.Direction.SINK.name());

@@ -13,6 +13,7 @@ import com.webank.wedatasphere.exchangis.job.server.render.transform.TransformRu
 import com.webank.wedatasphere.exchangis.job.server.render.transform.Transformer;
 import com.webank.wedatasphere.exchangis.job.server.render.transform.TransformRequestVo;
 import com.webank.wedatasphere.exchangis.job.server.render.transform.TransformSettings;
+import com.webank.wedatasphere.exchangis.job.server.render.transform.FileColumnVo;
 import com.webank.wedatasphere.exchangis.job.server.render.transform.field.FieldColumn;
 import com.webank.wedatasphere.exchangis.job.server.render.transform.field.mapping.match.FieldAllMatchIgnoreCaseStrategy;
 import com.webank.wedatasphere.exchangis.job.server.render.transform.field.mapping.match.FieldAllMatchStrategy;
@@ -101,7 +102,22 @@ public class FieldMappingTransformer implements Transformer {
         settings.setTransformEnable(rule.isFieldTransformEnable());
         // Get raw meta columns
         List<FieldColumn> sourceColumns = new ArrayList<>();
-        if (!requestVo.isSrcTblNotExist()) {
+        // ⭐ G3: file source branch — columns come from frontend-provided sourceFileColumns
+        //    (respects user UI edits M4). srcTblNotExist does not apply to file source
+        //    (file always has columns); partition logic is skipped.
+        //    文件 source 分支：字段来自前端传入的 sourceFileColumns（尊重用户 UI 编辑 M4）。
+        //    srcTblNotExist 对文件 source 不适用（文件必有列）；不走 partition 分支。
+        boolean isFileSource = "file".equalsIgnoreCase(requestVo.getSourceTypeId());
+        if (isFileSource) {
+            List<FileColumnVo> fileCols = requestVo.getSourceFileColumns();
+            if (fileCols != null) {
+                boolean editable = rule.getFieldEditEnableRuleItem().getOrDefault(TransformRule.Direction.SOURCE.name(), true);
+                for (int i = 0; i < fileCols.size(); i++) {
+                    FileColumnVo fileColumn = fileCols.get(i);
+                    sourceColumns.add(new FieldColumnWrapper(fileColumn.getName(), fileColumn.getType(), i, editable));
+                }
+            }
+        } else if (!requestVo.isSrcTblNotExist()) {
             try {
                 AtomicReference<String> operator = new AtomicReference<>(requestVo.getOperator());
                 // Try to get data source authority from project and set the privilege user
