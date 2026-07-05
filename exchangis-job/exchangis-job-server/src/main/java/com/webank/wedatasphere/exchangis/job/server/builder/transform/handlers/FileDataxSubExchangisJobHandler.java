@@ -34,15 +34,18 @@ import java.util.Objects;
  *       (e.g. {@code __file_bml_resource_id}). They are read with
  *       {@link JobParams#define(String)} and stay in the source param set; txtfilereader ignores
  *       these unknown keys, so no manual get+remove is needed.</li>
- *   <li>txtfilereader params ({@code path}/{@code encoding}/{@code delimiter}/{@code nullFormat})
- *       are real reader keys. {@code path} is set to {@link #FILE_BASE_PATH} (the subdirectory under
- *       the EC workdir where the BML resource is downloaded); the others are sent by the frontend
- *       from the parse result.</li>
+ *   <li>txtfilereader params ({@code path}/{@code encoding}/{@code delimiter}/{@code nullFormat}
+ *       /{@code skipHeader}) are real reader keys. {@code path} is set to {@link #FILE_BASE_PATH}
+ *       (the subdirectory under the EC workdir where the BML resource is downloaded);
+ *       {@code skipHeader} is set to {@link #SKIP_HEADER} (default true, since the upload parse
+ *       flow already extracts the header row); the others are sent by the frontend from the
+ *       parse result.</li>
  * </ul>
  *
  * <p>BML 引用参数以 {@code __file_bml_} 前缀命名空间隔离，用 {@link JobParams#define(String)} 读取，
  * 保留在 source 参数集中（txtfilereader 忽略未知键，无需 get+remove）。txtfilereader 参数
- * （path/encoding/delimiter/nullFormat）为真实 reader 键，path 设为 FILE_BASE_PATH（EC 工作目录下 BML 资源下载到的子目录）。
+ * （path/encoding/delimiter/nullFormat/skipHeader）为真实 reader 键，path 设为 FILE_BASE_PATH（EC 工作目录下 BML 资源下载到的子目录），
+ * skipHeader 设为 SKIP_HEADER（默认 true，因上传解析流程已将首行作为表头提取）。
  *
  * <h2>BML injection adaptation (BML 注入适配)</h2>
  * The design doc describes writing a plain-JSON {@code wds.linkis.engineconn.datax.bml.resources} job
@@ -81,6 +84,20 @@ public class FileDataxSubExchangisJobHandler extends AuthEnabledSubExchangisJobH
             CommonVars.apply("wds.exchangis.file-source.base-path", "fileSets");
 
     /**
+     * Whether txtfilereader skips the header row (DataX {@code Key.SKIP_HEADER}).
+     * Default {@code true}: the file-source upload parse flow already extracts the header
+     * row (row 0) for column names/types, so the reader must skip it to avoid reading the
+     * header as a data row. DataX's own default is {@code false}, so this must be set
+     * explicitly. Configurable via {@code wds.exchangis.file-source.skip-header}.
+     *
+     * txtfilereader 是否跳过首行（DataX {@code Key.SKIP_HEADER}）。默认 {@code true}：
+     * 文件 source 上传解析流程已将首行作为表头提取列名/类型，reader 必须跳过首行，否则会把表头读成数据。
+     * DataX 自身默认为 {@code false}，故需显式设置。可通过 {@code wds.exchangis.file-source.skip-header} 配置。
+     */
+    public static final CommonVars<Boolean> SKIP_HEADER =
+            CommonVars.apply("wds.exchangis.file-source.skip-header", true);
+
+    /**
      * Job param key used to stash the file BML reference for the engine builder.
      * 暂存文件 BML 引用供引擎 builder 使用的 job param key。
      */
@@ -105,6 +122,7 @@ public class FileDataxSubExchangisJobHandler extends AuthEnabledSubExchangisJobH
      */
     private static final String PARAM_PATH = "path";
     private static final String PARAM_DELIMITER = "delimiter";
+    private static final String PARAM_SKIP_HEADER = "skipHeader";
     private static final JobParamDefine<String> ENCODING = JobParams.define(JobParamConstraints.ENCODING);
     private static final JobParamDefine<String> DELIMITER = JobParams.define(PARAM_DELIMITER);
     private static final JobParamDefine<String> NULL_FORMAT = JobParams.define(JobParamConstraints.NULL_FORMAT);
@@ -141,6 +159,14 @@ public class FileDataxSubExchangisJobHandler extends AuthEnabledSubExchangisJobH
             //    path = FILE_BASE_PATH。引擎 builder 将 BML 资源下载到 <EC workdir>/<FILE_BASE_PATH>/<name>
             //    （给资源名加 FILE_BASE_PATH 前缀），txtfilereader 从此子目录读取。仿 PROCESSOR_BASE_PATH。
             paramSet.add(JobParams.newOne(PARAM_PATH, FILE_BASE_PATH.getValue()));
+
+            // 3b. skipHeader = SKIP_HEADER (default true). The upload parse flow already extracts
+            //     the header row (row 0) for column names/types, so the reader must skip it;
+            //     otherwise the header would be read as a data row. DataX's own default is false,
+            //     so this must be set explicitly.
+            //     skipHeader = SKIP_HEADER（默认 true）。上传解析流程已将首行作为表头提取列名/类型，
+            //     reader 必须跳过首行，否则表头会被读成数据。DataX 自身默认 false，需显式设置。
+            paramSet.add(JobParams.newOne(PARAM_SKIP_HEADER, SKIP_HEADER.getValue()));
         } else {
             LOG.warn("File source handler: missing resourceId/version in source params (source 参数缺失 resourceId/version)");
         }
