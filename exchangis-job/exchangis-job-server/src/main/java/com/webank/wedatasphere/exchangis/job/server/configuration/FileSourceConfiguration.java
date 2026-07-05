@@ -51,6 +51,19 @@ public class FileSourceConfiguration {
             CommonVars.apply("wds.exchangis.file-source.header-rows", 2);
 
     /**
+     * Extra date formats for file-source DATE type inference, comma-separated
+     * (e.g. "yyyy/MM/dd,yyyy.MM.dd"). APPENDED to the 3 base formats
+     * ("yyyy-MM-dd HH:mm:ss", "yyyy-MM-dd", "HH:mm:ss") mirrored from DataX
+     * {@code ColumnCast.StringCast.asDate}. Invalid patterns are skipped at first use
+     * with a warning.
+     *
+     * 文件 source DATE 类型推断的额外日期格式，逗号分隔（如 "yyyy/MM/dd,yyyy.MM.dd"）；
+     * 追加到对齐 DataX {@code ColumnCast.StringCast.asDate} 的三种基础格式之后，无效模式在首次使用时跳过并告警。
+     */
+    public static final CommonVars<String> DATE_INFER_EXTRA_FORMATS =
+            CommonVars.apply("wds.exchangis.file-source.date-infer-extra-formats", "");
+
+    /**
      * Multipart config for large file uploads (大文件上传 multipart 配置)
      *
      * <p>Registered programmatically so that {@code application.yml} stays minimal and the limit

@@ -1,14 +1,18 @@
 package com.webank.wedatasphere.exchangis.job.server.parse;
 
+import com.webank.wedatasphere.exchangis.job.server.configuration.FileSourceConfiguration;
 import com.ibm.icu.text.CharsetDetector;
 import com.ibm.icu.text.CharsetMatch;
+import org.apache.commons.lang3.time.FastDateFormat;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.text.ParsePosition;
 import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -21,8 +25,9 @@ import java.util.Set;
  * <ol>
  *   <li>Header stage (头信息阶段): BOM sniff + ICU4J charset detection + separator scoring
  *       + column name normalization. Fail fast if encoding unidentifiable or format invalid.</li>
- *   <li>Sampling stage (采样阶段): type inference (int→long→double→decimal→date→timestamp→string)
- *       and null-rate over the first {@code sampleRows} rows.</li>
+ *   <li>Sampling stage (采样阶段): type inference (long→double→boolean→date→string,
+ *       aligned with DataX UnstructuredStorageReaderUtil supported column types
+ *       STRING/LONG/DOUBLE/BOOLEAN/DATE) and null-rate over the first {@code sampleRows} rows.</li>
  * </ol>
  *
  * <p>ICU4J is the same charset-detection engine used by Apache Tika; using it directly avoids
@@ -47,10 +52,98 @@ public class StreamFileHeaderParser {
     private static final char[] SEPARATORS = {',', '\t', ';', '|'};
 
     /**
-     * Type inference chain (narrowest -> widest) / 类型推断链（窄→宽）
+     * Type inference chain (narrowest -> widest), aligned with DataX
+     * UnstructuredStorageReaderUtil supported column types (STRING/LONG/DOUBLE/BOOLEAN/DATE).
+     * 类型推断链（窄→宽），对齐 DataX UnstructuredStorageReaderUtil 支持的列类型。
      */
     private static final String[] TYPE_CHAIN =
-            {"int", "long", "double", "decimal", "date", "timestamp", "string"};
+            {"LONG", "DOUBLE", "BOOLEAN", "DATE", "STRING"};
+
+    /**
+     * Base date formats mirrored from DataX {@code ColumnCast.StringCast.asDate}
+     * (datetime / date / time), always used for DATE type inference. Extra formats from
+     * {@link FileSourceConfiguration#DATE_INFER_EXTRA_FORMATS} (Linkis CommonVars) are
+     * appended at first use. Full-input match required to reject prefix matches like
+     * "2024-01-01abc".
+     * 基础日期格式，对齐 DataX {@code ColumnCast.StringCast.asDate} 的三种格式，始终参与 DATE 推断；
+     * 额外格式通过 {@link FileSourceConfiguration#DATE_INFER_EXTRA_FORMATS}（Linkis CommonVars）在首次使用时追加。
+     * 要求整串匹配，拒绝 "2024-01-01abc" 这类前缀匹配。
+     */
+    private static final FastDateFormat[] BASE_DATE_FORMATS = {
+            FastDateFormat.getInstance("yyyy-MM-dd HH:mm:ss"),
+            FastDateFormat.getInstance("yyyy-MM-dd"),
+            FastDateFormat.getInstance("HH:mm:ss")
+    };
+
+    /**
+     * Cached combined date formats (base + extra). Lazily built on first DATE inference
+     * so that Linkis CommonVars / {@link FileSourceConfiguration} is already initialized.
+     * 缓存的完整日期格式（基础+额外），在首次 DATE 推断时懒构建，确保 CommonVars/FileSourceConfiguration 已初始化。
+     */
+    private static volatile FastDateFormat[] cachedDateFormats;
+
+    /**
+     * Get the combined date formats (base + config extra), lazily cached.
+     * 获取完整日期格式（基础+配置额外），懒缓存。
+     */
+    private static FastDateFormat[] getDateFormats() {
+        FastDateFormat[] cached = cachedDateFormats;
+        if (cached != null) {
+            return cached;
+        }
+        synchronized (StreamFileHeaderParser.class) {
+            if (cachedDateFormats == null) {
+                cachedDateFormats = buildDateFormats(readExtraDateFormats());
+            }
+            return cachedDateFormats;
+        }
+    }
+
+    /**
+     * Read the extra date formats config; fall back to empty when CommonVars is not
+     * available (e.g. unit tests without Linkis config bootstrap).
+     * 读取额外日期格式配置；CommonVars 不可用时（如未引导 Linkis 配置的单元测试）回退为空。
+     */
+    private static String readExtraDateFormats() {
+        try {
+            return FileSourceConfiguration.DATE_INFER_EXTRA_FORMATS.getValue();
+        } catch (Throwable t) {
+            LOG.warn("Cannot read extra date formats config, use base formats only "
+                    + "(无法读取额外日期格式配置，仅使用基础格式): {}", t.getMessage());
+            return "";
+        }
+    }
+
+    /**
+     * Build the combined date formats: base formats + extra patterns parsed from a
+     * comma-separated config string. Invalid patterns are skipped with a warning.
+     * 构建完整日期格式：基础格式 + 逗号分隔配置字符串解析出的额外模式；无效模式跳过并告警。
+     *
+     * <p>Package-private for unit testing. (包级可见以便单元测试。)
+     *
+     * @param extraFormatsCsv comma-separated extra date patterns, may be null/empty
+     *                        (逗号分隔的额外日期模式，可为 null/空)
+     * @return combined non-null date format array (合并后的非空日期格式数组)
+     */
+    static FastDateFormat[] buildDateFormats(String extraFormatsCsv) {
+        List<FastDateFormat> formats = new ArrayList<>(BASE_DATE_FORMATS.length + 4);
+        Collections.addAll(formats, BASE_DATE_FORMATS);
+        if (extraFormatsCsv != null && !extraFormatsCsv.trim().isEmpty()) {
+            for (String token : extraFormatsCsv.split(",")) {
+                String pattern = token.trim();
+                if (pattern.isEmpty()) {
+                    continue;
+                }
+                try {
+                    formats.add(FastDateFormat.getInstance(pattern));
+                } catch (Exception e) {
+                    LOG.warn("Skip invalid date format pattern (跳过无效日期格式): [{}], {}",
+                            pattern, e.getMessage());
+                }
+            }
+        }
+        return formats.toArray(new FastDateFormat[0]);
+    }
 
     /**
      * Null value tokens / 空值识别
@@ -129,14 +222,14 @@ public class StreamFileHeaderParser {
             String rawName = rawColumns.get(i);
             String normName = normalizeName(rawName, i, usedNames);
             usedNames.add(normName);
-            columns.add(new FileColumnDefine(normName, rawName, "string"));
+            columns.add(new FileColumnDefine(normName, rawName, "STRING"));
         }
 
         // 7. Type inference + null rate over sample rows / 类型推断 + 空值率
         int colCount = columns.size();
         int[] nullCounts = new int[colCount];
         String[] types = new String[colCount];
-        Arrays.fill(types, "int");
+        Arrays.fill(types, "LONG");
         int startRow = hasHeader ? 1 : 0;
         int sampleCount = Math.min(sampleRows, lines.size() - startRow);
         if (sampleCount < 0) {
@@ -369,8 +462,8 @@ public class StreamFileHeaderParser {
 
     /**
      * Infer the column type after seeing a new value: advance along the chain until a type
-     * can parse the value (or fall back to string).
-     * 类型推断：沿链前进直到找到能解析当前值的类型（否则降级 string）。
+     * can parse the value (or fall back to STRING).
+     * 类型推断：沿链前进直到找到能解析当前值的类型（否则降级 STRING）。
      */
     private String inferType(String current, String value) {
         int startIdx = 0;
@@ -385,32 +478,31 @@ public class StreamFileHeaderParser {
                 return TYPE_CHAIN[i];
             }
         }
-        return "string";
+        return "STRING";
     }
 
+    /**
+     * Check whether a candidate type can parse the given value.
+     * Type names align with DataX {@code Type} enum (STRING/LONG/DOUBLE/BOOLEAN/DATE).
+     * 校验候选类型能否解析给定值；类型名对齐 DataX {@code Type} 枚举。
+     */
     private boolean canParse(String type, String value) {
         if (value == null || value.isEmpty()) {
             return false;
         }
         try {
             switch (type) {
-                case "int":
-                    Integer.parseInt(value);
-                    return true;
-                case "long":
+                case "LONG":
                     Long.parseLong(value);
                     return true;
-                case "double":
+                case "DOUBLE":
                     Double.parseDouble(value);
                     return true;
-                case "decimal":
-                    new java.math.BigDecimal(value);
-                    return true;
-                case "date":
-                    return value.matches("\\d{4}-\\d{2}-\\d{2}");
-                case "timestamp":
-                    return value.matches("\\d{4}-\\d{2}-\\d{2}[ T]\\d{2}:\\d{2}:\\d{2}.*");
-                case "string":
+                case "BOOLEAN":
+                    return value.equalsIgnoreCase("true") || value.equalsIgnoreCase("false");
+                case "DATE":
+                    return isDateFormat(value);
+                case "STRING":
                     return true;
                 default:
                     return false;
@@ -418,6 +510,24 @@ public class StreamFileHeaderParser {
         } catch (NumberFormatException e) {
             return false;
         }
+    }
+
+    /**
+     * Check whether the value matches any of the DataX {@code ColumnCast.StringCast.asDate}
+     * date formats (datetime "yyyy-MM-dd HH:mm:ss", date "yyyy-MM-dd", time "HH:mm:ss").
+     * Full-input match required to reject prefix matches like "2024-01-01abc".
+     * 校验值是否匹配 DataX {@code ColumnCast.StringCast.asDate} 的任一日期格式；要求整串匹配，
+     * 拒绝 "2024-01-01abc" 这类前缀匹配。
+     */
+    private boolean isDateFormat(String value) {
+        for (FastDateFormat format : getDateFormats()) {
+            ParsePosition pos = new ParsePosition(0);
+            format.parse(value, pos);
+            if (pos.getIndex() == value.length()) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private List<String> splitLines(String text) {
