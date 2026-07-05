@@ -167,6 +167,57 @@ class StreamFileHeaderParserTest {
     }
 
     @Test
+    @DisplayName("Sample values are deduplicated (最多 5 个去重采样值，重复值不重复收录)")
+    void testSampleValuesDeduplicated() {
+        // status column: A,A,B,C,A,D,E -> distinct values A,B,C,D,E (5, skipping duplicate A's)
+        // Without dedup the first 5 non-null values would be [A,A,B,C,A] (3 A's duplicated).
+        // status 列：A,A,B,C,A,D,E -> 去重后 A,B,C,D,E（5 个，跳过重复的 A）。
+        // 不去重则前 5 个非空值为 [A,A,B,C,A]（3 个 A 重复）。
+        String csv = String.join("\n",
+                "status,extra",
+                "A,x",
+                "A,y",
+                "B,z",
+                "C,w",
+                "A,q",
+                "D,r",
+                "E,t");
+        byte[] bytes = csv.getBytes(StandardCharsets.UTF_8);
+        FileParseResult result = parser.parse(bytes, bytes.length, "test.csv", bytes.length, 100, 1);
+        assertNull(result.getErrorCode(), "Parse should succeed (解析应成功)");
+
+        List<FileColumnDefine> columns = result.getColumns();
+        List<String> statusSamples = columns.get(0).getSampleValues();
+        assertEquals(java.util.Arrays.asList("A", "B", "C", "D", "E"), statusSamples,
+                "status samples should be 5 distinct values [A,B,C,D,E] (status 采样应为 5 个去重值 [A,B,C,D,E])");
+    }
+
+    @Test
+    @DisplayName("Sample values cap at 5 distinct (去重后上限仍为 5)")
+    void testSampleValuesCappedAtFiveDistinct() {
+        // 7 distinct values; only the first 5 distinct are kept.
+        // 7 个不同值，仅保留前 5 个不同的。
+        String csv = String.join("\n",
+                "v,extra",
+                "v1,x",
+                "v2,y",
+                "v3,z",
+                "v4,w",
+                "v5,q",
+                "v6,r",
+                "v7,t");
+        byte[] bytes = csv.getBytes(StandardCharsets.UTF_8);
+        FileParseResult result = parser.parse(bytes, bytes.length, "test.csv", bytes.length, 100, 1);
+        assertNull(result.getErrorCode(), "Parse should succeed (解析应成功)");
+
+        List<String> samples = result.getColumns().get(0).getSampleValues();
+        assertEquals(5, samples.size(), "Samples should cap at 5 (采样上限 5)");
+        // distinctness: no duplicates (无重复)
+        assertEquals(samples.size(), new java.util.HashSet<>(samples).size(),
+                "Samples must be distinct (采样值必须去重)");
+    }
+
+    @Test
     @DisplayName("buildDateFormats: null/empty extra yields only the 3 base formats "
             + "(null/空 额外格式时仅返回 3 种基础格式)")
     void testBuildDateFormatsBaseOnly() {

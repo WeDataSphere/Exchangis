@@ -244,7 +244,12 @@ public class StreamFileHeaderParser {
                 } else {
                     types[c] = inferType(types[c], v);
                     List<String> samples = columns.get(c).getSampleValues();
-                    if (samples.size() < 5) {
+                    // Collect up to 5 DISTINCT sample values (dedup). Without dedup, a column
+                    // whose first rows repeat (e.g. a status column "A,A,A,B,A") would surface
+                    // duplicate samples, which is not useful for field-mapping preview.
+                    // 收集最多 5 个去重后的采样值。不去重时，前几行重复的列（如状态列 A,A,A,B,A）
+                    // 会给出重复采样值，对字段映射预览无意义。
+                    if (samples.size() < 5 && !samples.contains(v)) {
                         samples.add(v);
                     }
                 }
