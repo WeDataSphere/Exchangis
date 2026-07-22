@@ -228,6 +228,10 @@
             <if test="jobName.trim() != '' and jobName != null">
                 and l.name like concat('%', #{jobName}, '%')
             </if>
+            <!--如果jobNameExact有值，则精确匹配job_name（不走模糊搜索，走idx_job_name索引）-->
+            <if test="jobNameExact != null and jobNameExact.trim() != ''">
+                and l.job_name = #{jobNameExact}
+            </if>
         </where>
         order by create_time desc
     </select>
@@ -261,6 +265,10 @@
             </if>
             <if test="jobName.trim() != '' and jobName != null">
                 and l.name like concat('%', #{jobName}, '%')
+            </if>
+            <!--如果jobNameExact有值，则精确匹配job_name（不走模糊搜索，与分页查询保持一致）-->
+            <if test="jobNameExact != null and jobNameExact.trim() != ''">
+                and l.job_name = #{jobNameExact}
             </if>
         </where>
     </select>

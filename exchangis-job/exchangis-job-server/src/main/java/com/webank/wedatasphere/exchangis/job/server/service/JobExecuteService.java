@@ -54,9 +54,19 @@ public interface JobExecuteService {
 
     /**
      * Gets Executed job list
+     * @param jobExecutionId the job execution id
+     * @param jobName        the job name (fuzzy LIKE match on the name column)
+     * @param jobNameExact   the exact job name (exact = match on the job_name column, no fuzzy;
+     *                       uses the idx_job_name index); null/empty means not applied
+     * @param status         the status
+     * @param launchStartTime the launch start time
+     * @param launchEndTime   the launch end time
+     * @param current         current page
+     * @param size            page size
+     * @param request         http request
      * @return the launched jobList
      */
-    PageResult<ExchangisLaunchedJobListVo> getExecutedJobList(String jobExecutionId, String jobName, String status,
+    PageResult<ExchangisLaunchedJobListVo> getExecutedJobList(String jobExecutionId, String jobName, String jobNameExact, String status,
                                                               Long launchStartTime, Long launchEndTime, int  current, int size, HttpServletRequest request) throws ExchangisJobServerException;
 
     /**

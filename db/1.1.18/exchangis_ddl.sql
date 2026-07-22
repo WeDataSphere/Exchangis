@@ -29,3 +29,7 @@ CREATE TABLE IF NOT EXISTS `exchangis_job_file_resources` (
   INDEX `idx_job_id` (`job_id`),
   INDEX `idx_bml_resource_id` (`bml_resource_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin;
+
+-- Add index for job_name field in exchangis_launched_job_entity table
+-- 为exchangis_launched_job_entity表的job_name字段添加索引（支持 listJobs 的 jobNameExact 精确查询，消除全表扫描）
+ALTER TABLE exchangis_launched_job_entity ADD INDEX `idx_job_name`(`job_name`);

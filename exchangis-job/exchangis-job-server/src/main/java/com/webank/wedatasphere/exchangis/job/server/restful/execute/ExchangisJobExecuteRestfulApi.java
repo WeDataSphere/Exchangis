@@ -223,6 +223,7 @@ public class ExchangisJobExecuteRestfulApi {
     @RequestMapping(value = "/listJobs", method = RequestMethod.GET)
     public Message listJobs(@RequestParam(value = "jobExecutionId", required = false) String jobExecutionId,
                              @RequestParam(value = "jobName", required = false) String jobName,
+                             @RequestParam(value = "jobNameExact", required = false) String jobNameExact,
                              @RequestParam(value = "status", required = false) String status,
                              @RequestParam(value = "launchStartTime", required = false) Long launchStartTime,
                              @RequestParam(value = "launchEndTime", required = false) Long launchEndTime,
@@ -230,9 +231,16 @@ public class ExchangisJobExecuteRestfulApi {
                              @RequestParam(value = "size", required = false) int size,
                             HttpServletRequest request) {
         Message message = Message.ok("Submitted succeed(提交成功)！");
-        jobName = jobName.replace("_", "\\_");
+        // Escape underscore for fuzzy LIKE (underscore is a LIKE wildcard); jobNameExact
+        // (exact match on job_name) needs no escaping. Null-guard: jobName is null when
+        // only jobNameExact is passed.
+        // 为模糊 LIKE 转义下划线（LIKE 通配符）；jobNameExact（对 job_name 精确匹配）无需转义。
+        // 空值保护：仅传 jobNameExact 时 jobName 为 null。
+        if (jobName != null) {
+            jobName = jobName.replace("_", "\\_");
+        }
         try {
-            PageResult<ExchangisLaunchedJobListVo> jobList = executeService.getExecutedJobList(jobExecutionId, jobName, status,
+            PageResult<ExchangisLaunchedJobListVo> jobList = executeService.getExecutedJobList(jobExecutionId, jobName, jobNameExact, status,
                     launchStartTime, launchEndTime, current, size, request);
             message.data("jobList", jobList.getList());
             message.data("total", jobList.getTotal());

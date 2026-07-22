@@ -140,7 +140,8 @@ CREATE TABLE `exchangis_launched_job_entity` (
   `instance` varchar(100) DEFAULT NULL,
   PRIMARY KEY (`id`),
   UNIQUE KEY `job_execution_id_UNIQUE` (`job_execution_id`),
-  KEY `idx_job_id` (`job_id`)
+  KEY `idx_job_id` (`job_id`),
+  KEY `idx_job_name` (`job_name`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 
 -- exchangis_launched_task_entity definition
