@@ -116,7 +116,11 @@ public class JobFileSourceServiceImpl implements JobFileSourceService {
             entity.setJobId(jobId);
             entity.setFileName(resolvedFileName);
             entity.setFileSize(fileSize);
-            entity.setFileType(detectFileType(resolvedFileName));
+            // file_type derives from the parse result's fileFormat (single source of truth
+            // in StreamFileHeaderParser), uppercased to the DB convention CSV/TEXT.
+            // file_type 由解析结果的 fileFormat（StreamFileHeaderParser 为唯一来源）大写派生为 DB 约定 CSV/TEXT。
+            String fileFormat = parseResult.getFileFormat();
+            entity.setFileType(fileFormat != null ? fileFormat.toUpperCase(Locale.ROOT) : "CSV");
             entity.setEncoding(parseResult.getEncoding());
             entity.setSeparator(parseResult.getSeparator() == null ? null : String.valueOf(parseResult.getSeparator()));
             entity.setHasHeader(parseResult.isHasHeader());
@@ -239,14 +243,4 @@ public class JobFileSourceServiceImpl implements JobFileSourceService {
         return Objects.nonNull(original) ? original : "unnamed.csv";
     }
 
-    private String detectFileType(String fileName) {
-        if (Objects.isNull(fileName)) {
-            return "CSV";
-        }
-        String lower = fileName.toLowerCase(Locale.ROOT);
-        if (lower.endsWith(".txt") || lower.endsWith(".text")) {
-            return "TEXT";
-        }
-        return "CSV";
-    }
 }

@@ -41,6 +41,17 @@ public class FileParseResult {
     private Character quoteChar;
 
     /**
+     * File format for DataX txtfilereader (Key.FILE_FORMAT): "csv" (OpenCSV CsvReader,
+     * handles quoted fields per RFC 4180) or "text" (plain delimiter split). Returned to
+     * the frontend so the sync-task submission can forward it to txtfilereader; otherwise
+     * txtfilereader always defaults to "csv" and mis-parses plain-text (.txt) files.
+     * 文件格式，对应 DataX txtfilereader（Key.FILE_FORMAT）：csv（OpenCSV CsvReader，按 RFC 4180
+     * 处理引号字段）或 text（简单分隔符切分）。随响应返回前端，供提交同步任务时透传给 txtfilereader，
+     * 否则 txtfilereader 恒默认 csv，会误解析纯文本(.txt)文件。
+     */
+    private String fileFormat;
+
+    /**
      * First row is header / 首行是否表头
      */
     private boolean hasHeader;
@@ -116,6 +127,14 @@ public class FileParseResult {
 
     public void setQuoteChar(Character quoteChar) {
         this.quoteChar = quoteChar;
+    }
+
+    public String getFileFormat() {
+        return fileFormat;
+    }
+
+    public void setFileFormat(String fileFormat) {
+        this.fileFormat = fileFormat;
     }
 
     public boolean isHasHeader() {

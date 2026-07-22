@@ -77,4 +77,25 @@ class FileDataxSubExchangisJobHandlerTest {
         new FileDataxSubExchangisJobHandler().handleJobSource(job, null);
         // No exception thrown is the assertion (无异常抛出即为通过)
     }
+
+    @Test
+    @DisplayName("handleJobSource forwards fileFormat to txtfilereader when present "
+            + "(BML 引用齐全且前端提供 fileFormat 时透传给 txtfilereader)")
+    void testHandleJobSourceForwardsFileFormat() {
+        SubExchangisJob job = new SubExchangisJob();
+        JobParamSet paramSet = new JobParamSet();
+        paramSet.add(JobParams.newOne(PARAM_BML_RESOURCE_ID, "rid-123"));
+        paramSet.add(JobParams.newOne(PARAM_BML_VERSION, "v1"));
+        paramSet.add(JobParams.newOne(PARAM_BML_OWNER, "alice"));
+        paramSet.add(JobParams.newOne(PARAM_BML_NAME, "data.txt"));
+        paramSet.add(JobParams.newOne("fileFormat", "text"));
+        job.addRealmParams(SubExchangisJob.REALM_JOB_CONTENT_SOURCE, paramSet);
+
+        new FileDataxSubExchangisJobHandler().handleJobSource(job, null);
+
+        JobParam<?> fileFormat = paramSet.get("fileFormat");
+        assertNotNull(fileFormat, "fileFormat should be forwarded when present (提供时应透传 fileFormat)");
+        assertEquals("text", fileFormat.getValue(),
+                "fileFormat value should be passed through (fileFormat 值应原样透传)");
+    }
 }

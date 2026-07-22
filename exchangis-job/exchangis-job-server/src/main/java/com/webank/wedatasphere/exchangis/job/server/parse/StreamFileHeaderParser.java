@@ -16,6 +16,7 @@ import java.util.Collections;
 import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Set;
 
 /**
@@ -166,6 +167,15 @@ public class StreamFileHeaderParser {
         FileParseResult result = new FileParseResult();
         result.setFileName(fileName);
         result.setFileSize(fileSize);
+        // File format (csv/text) for DataX txtfilereader Key.FILE_FORMAT. Returned to the
+        // frontend so the sync-task submission can forward it to txtfilereader; without it
+        // txtfilereader always defaults to "csv", which mis-parses plain-text (.txt) files
+        // whose fields need the simple delimiter split. Set early so it is present even on
+        // fail-fast.
+        // 文件格式（csv/text），对应 DataX txtfilereader Key.FILE_FORMAT。随响应返回前端，供提交
+        // 同步任务时透传给 txtfilereader；缺失时 txtfilereader 恒默认 csv，会把纯文本(.txt)文件
+        // 按 CSV 引号规则误解析。提前设置，fail fast 时也携带。
+        result.setFileFormat(detectFileFormat(fileName));
 
         // 1. Encoding detection (BOM sniff + ICU4J) / 编码检测
         EncodingDetection enc = detectEncoding(buffer, length);
@@ -260,6 +270,30 @@ public class StreamFileHeaderParser {
         result.setColumns(columns);
         result.setSampledRowCount(sampleCount);
         return result;
+    }
+
+    /**
+     * Detect the DataX file format (csv/text) from the file-name extension. Maps to DataX
+     * {@code Key.FILE_FORMAT} (txtfilereader): "csv" uses the OpenCSV CsvReader (handles
+     * quoted fields per RFC 4180), "text" uses a plain delimiter split. Defaults to "csv"
+     * (matches DataX's own default and the design-doc DDL default CSV) for unknown/null
+     * extensions. This is the single source of truth for file format; the service derives
+     * the DB {@code file_type} column from it (uppercased).
+     *
+     * 从文件名扩展名推断 DataX 文件格式（csv/text），对应 DataX {@code Key.FILE_FORMAT}
+     * （txtfilereader）：csv 用 OpenCSV CsvReader（按 RFC 4180 处理引号字段），text 用简单分隔符切分。
+     * 扩展名未知/null 时默认 csv（与 DataX 自身默认及设计文档 DDL 默认 CSV 一致）。本方法为文件格式
+     * 的唯一来源，服务层据此（大写）派生 DB {@code file_type} 列。
+     */
+    private String detectFileFormat(String fileName) {
+        if (fileName == null) {
+            return "csv";
+        }
+        String lower = fileName.toLowerCase(Locale.ROOT);
+        if (lower.endsWith(".txt") || lower.endsWith(".text")) {
+            return "text";
+        }
+        return "csv";
     }
 
     /**

@@ -35,7 +35,7 @@ import java.util.Objects;
  *       {@link JobParams#define(String)} and stay in the source param set; txtfilereader ignores
  *       these unknown keys, so no manual get+remove is needed.</li>
  *   <li>txtfilereader params ({@code path}/{@code encoding}/{@code delimiter}/{@code nullFormat}
- *       /{@code skipHeader}) are real reader keys. {@code path} is set to {@link #FILE_BASE_PATH}
+ *       /{@code fileFormat}/{@code skipHeader}) are real reader keys. {@code path} is set to {@link #FILE_BASE_PATH}
  *       (the subdirectory under the EC workdir where the BML resource is downloaded);
  *       {@code skipHeader} is set to {@link #SKIP_HEADER} (default true, since the upload parse
  *       flow already extracts the header row); the others are sent by the frontend from the
@@ -44,8 +44,8 @@ import java.util.Objects;
  *
  * <p>BML 引用参数以 {@code __file_bml_} 前缀命名空间隔离，用 {@link JobParams#define(String)} 读取，
  * 保留在 source 参数集中（txtfilereader 忽略未知键，无需 get+remove）。txtfilereader 参数
- * （path/encoding/delimiter/nullFormat/skipHeader）为真实 reader 键，path 设为 FILE_BASE_PATH（EC 工作目录下 BML 资源下载到的子目录），
- * skipHeader 设为 SKIP_HEADER（默认 true，因上传解析流程已将首行作为表头提取）。
+ * （path/encoding/delimiter/nullFormat/fileFormat/skipHeader）为真实 reader 键，path 设为 FILE_BASE_PATH（EC 工作目录下 BML 资源下载到的子目录），
+ * skipHeader 设为 SKIP_HEADER（默认 true，因上传解析流程已将首行作为表头提取），fileFormat（csv/text，DataX Key.FILE_FORMAT）等其余由前端取自解析结果透传。
  *
  * <h2>BML injection adaptation (BML 注入适配)</h2>
  * The design doc describes writing a plain-JSON {@code wds.linkis.engineconn.datax.bml.resources} job
@@ -123,9 +123,18 @@ public class FileDataxSubExchangisJobHandler extends AuthEnabledSubExchangisJobH
     private static final String PARAM_PATH = "path";
     private static final String PARAM_DELIMITER = "delimiter";
     private static final String PARAM_SKIP_HEADER = "skipHeader";
+    /**
+     * DataX txtfilereader {@code Key.FILE_FORMAT}: "csv" (OpenCSV CsvReader) or "text"
+     * (plain split). Forwarded from the parse result via the frontend so txtfilereader
+     * reads the file with the correct strategy; absent -> txtfilereader defaults to "csv".
+     * DataX txtfilereader {@code Key.FILE_FORMAT}：csv（OpenCSV CsvReader）或 text（简单切分）。
+     * 由解析结果经前端透传，使 txtfilereader 按正确策略读取；缺失时 txtfilereader 默认 csv。
+     */
+    private static final String PARAM_FILE_FORMAT = "fileFormat";
     private static final JobParamDefine<String> ENCODING = JobParams.define(JobParamConstraints.ENCODING);
     private static final JobParamDefine<String> DELIMITER = JobParams.define(PARAM_DELIMITER);
     private static final JobParamDefine<String> NULL_FORMAT = JobParams.define(JobParamConstraints.NULL_FORMAT);
+    private static final JobParamDefine<String> FILE_FORMAT = JobParams.define(PARAM_FILE_FORMAT);
 
     @Override
     public void handleJobSource(SubExchangisJob subExchangisJob, ExchangisJobBuilderContext ctx) throws ErrorException {
@@ -172,10 +181,11 @@ public class FileDataxSubExchangisJobHandler extends AuthEnabledSubExchangisJobH
         }
 
         // 4. Ensure the txtfilereader params are present in the output param set.
-        //    确保 txtfilereader 参数（encoding/delimiter/nullFormat）存在于输出参数集。
+        //    确保 txtfilereader 参数（encoding/delimiter/nullFormat/fileFormat）存在于输出参数集。
         paramSet.addNonNull(ENCODING.get(paramSet));
         paramSet.addNonNull(DELIMITER.get(paramSet));
         paramSet.addNonNull(NULL_FORMAT.get(paramSet));
+        paramSet.addNonNull(FILE_FORMAT.get(paramSet));
     }
 
     @Override

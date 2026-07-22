@@ -263,4 +263,34 @@ class StreamFileHeaderParserTest {
         }
         return false;
     }
+
+    @Test
+    @DisplayName("fileFormat is csv for .csv/unknown and text for .txt/.text "
+            + "(.csv/未知扩展名为 csv，.txt/.text 为 text)")
+    void testFileFormatDetection() {
+        assertEquals("csv", parseFileFormat("data.csv"),
+                ".csv -> csv (.csv -> csv)");
+        assertEquals("text", parseFileFormat("data.txt"),
+                ".txt -> text (.txt -> text)");
+        assertEquals("text", parseFileFormat("data.text"),
+                ".text -> text (.text -> text)");
+        assertEquals("csv", parseFileFormat("data"),
+                "no extension -> csv (无扩展名 -> csv)");
+        assertEquals("csv", parseFileFormat(null),
+                "null name -> csv (文件名为 null -> csv)");
+        assertEquals("text", parseFileFormat("DATA.TXT"),
+                "case-insensitive .TXT -> text (大小写不敏感 .TXT -> text)");
+    }
+
+    /**
+     * Parse a minimal CSV under different file names and return the detected fileFormat.
+     * (以最小 CSV 内容配合不同文件名解析，返回检测到的 fileFormat。)
+     */
+    private String parseFileFormat(String fileName) {
+        String csv = "h1,h2\nv1,v2\n";
+        byte[] bytes = csv.getBytes(StandardCharsets.UTF_8);
+        FileParseResult result = parser.parse(bytes, bytes.length, fileName, bytes.length, 10, 1);
+        assertNull(result.getErrorCode(), "Parse should succeed (解析应成功)");
+        return result.getFileFormat();
+    }
 }
