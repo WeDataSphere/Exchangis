@@ -232,6 +232,10 @@
             <if test="jobNameExact != null and jobNameExact.trim() != ''">
                 and l.job_name = #{jobNameExact}
             </if>
+            <!--如果jobId有值，则按 exchangis_job_entity 的主键 id 过滤（launched job 的 job_id 即指向 job_entity.id，走 idx_job_id 索引）-->
+            <if test="jobId != null">
+                and l.job_id = #{jobId}
+            </if>
         </where>
         order by create_time desc
     </select>
@@ -269,6 +273,10 @@
             <!--如果jobNameExact有值，则精确匹配job_name（不走模糊搜索，与分页查询保持一致）-->
             <if test="jobNameExact != null and jobNameExact.trim() != ''">
                 and l.job_name = #{jobNameExact}
+            </if>
+            <!--如果jobId有值，则按 exchangis_job_entity 的主键 id 过滤（与分页查询保持一致，走 idx_job_id 索引）-->
+            <if test="jobId != null">
+                and l.job_id = #{jobId}
             </if>
         </where>
     </select>

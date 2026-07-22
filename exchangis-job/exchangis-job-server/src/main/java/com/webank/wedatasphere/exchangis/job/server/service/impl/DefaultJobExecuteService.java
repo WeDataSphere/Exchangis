@@ -269,7 +269,7 @@ public class DefaultJobExecuteService implements JobExecuteService {
     }
 
     @Override
-    public PageResult<ExchangisLaunchedJobListVo> getExecutedJobList(String jobExecutionId, String jobName, String jobNameExact, String status,
+    public PageResult<ExchangisLaunchedJobListVo> getExecutedJobList(String jobExecutionId, String jobName, String jobNameExact, Long jobId, String status,
                                                                Long launchStartTime, Long launchEndTime, int current, int size, HttpServletRequest request) throws ExchangisJobServerException {
         long totalStart = System.currentTimeMillis();
         if (current <= 0) {
@@ -289,7 +289,7 @@ public class DefaultJobExecuteService implements JobExecuteService {
         // queryJobCost covers both PageHelper count(*) and the paged select (two DB round-trips)
         long queryJobStart = System.currentTimeMillis();
         List<LaunchedExchangisJobEntity> jobEntitylist =
-                launchedJobDao.getAllLaunchedJob(jobExecutionId, jobName, jobNameExact, status, startTime, endTime,
+                launchedJobDao.getAllLaunchedJob(jobExecutionId, jobName, jobNameExact, jobId, status, startTime, endTime,
                         loginUser, GlobalConfiguration.isAdminUser(loginUser));
         long queryJobCost = System.currentTimeMillis() - queryJobStart;
         PageInfo<LaunchedExchangisJobEntity> pageInfo = new PageInfo<>(jobEntitylist);

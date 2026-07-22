@@ -100,6 +100,7 @@ public interface LaunchedJobDao {
     List<LaunchedExchangisJobEntity> getAllLaunchedJob(@Param("jobExecutionId") String jobExecutionId,
                                                        @Param("jobName") String jobName,
                                                        @Param("jobNameExact") String jobNameExact,
+                                                       @Param("jobId") Long jobId,
                                                        @Param("status") String status,
                                                        @Param("launchStartTime") Date launchStartTime,
                                                        @Param("launchEndTime") Date launchEndTime,

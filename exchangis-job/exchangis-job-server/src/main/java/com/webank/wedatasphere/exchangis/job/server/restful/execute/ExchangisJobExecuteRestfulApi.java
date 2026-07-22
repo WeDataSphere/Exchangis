@@ -224,6 +224,7 @@ public class ExchangisJobExecuteRestfulApi {
     public Message listJobs(@RequestParam(value = "jobExecutionId", required = false) String jobExecutionId,
                              @RequestParam(value = "jobName", required = false) String jobName,
                              @RequestParam(value = "jobNameExact", required = false) String jobNameExact,
+                             @RequestParam(value = "jobId", required = false) Long jobId,
                              @RequestParam(value = "status", required = false) String status,
                              @RequestParam(value = "launchStartTime", required = false) Long launchStartTime,
                              @RequestParam(value = "launchEndTime", required = false) Long launchEndTime,
@@ -240,7 +241,7 @@ public class ExchangisJobExecuteRestfulApi {
             jobName = jobName.replace("_", "\\_");
         }
         try {
-            PageResult<ExchangisLaunchedJobListVo> jobList = executeService.getExecutedJobList(jobExecutionId, jobName, jobNameExact, status,
+            PageResult<ExchangisLaunchedJobListVo> jobList = executeService.getExecutedJobList(jobExecutionId, jobName, jobNameExact, jobId, status,
                     launchStartTime, launchEndTime, current, size, request);
             message.data("jobList", jobList.getList());
             message.data("total", jobList.getTotal());
