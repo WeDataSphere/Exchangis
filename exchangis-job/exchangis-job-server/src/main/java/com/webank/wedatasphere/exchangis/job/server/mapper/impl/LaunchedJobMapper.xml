@@ -173,7 +173,7 @@
         LEFT JOIN `exchangis_job_entity` c ON l.job_id = c.id
         INNER JOIN `exchangis_project_info` p ON c.project_id = p.id
         <where>
-            <if test="jobExecutionId.trim() != '' and jobExecutionId != null">
+            <if test="jobExecutionId != null and jobExecutionId.trim() != ''">
                 and l.job_execution_id = #{jobExecutionId}
             </if>
             <if test="launchStartTime != null">
@@ -182,11 +182,11 @@
             <if test="launchEndTime != null">
                 and l.create_time &lt;= #{launchEndTime}
             </if>
-            <if test="status.trim() != '' and status != null">
+            <if test="status != null and status.trim() != ''">
                 and l.status = #{status}
             </if>
             <!--如果name有值，则模糊匹配name-->
-            <if test="jobName.trim() != '' and jobName != null">
+            <if test="jobName != null and jobName.trim() != ''">
                 and l.name like concat('%', #{jobName}, '%')
             </if>
         </where>
@@ -209,7 +209,7 @@
         LEFT JOIN `exchangis_job_entity` c ON l.job_id = c.id
         INNER JOIN `exchangis_project_info` p ON c.project_id = p.id
         <where>
-            <if test="jobExecutionId.trim() != '' and jobExecutionId != null">
+            <if test="jobExecutionId != null and jobExecutionId.trim() != ''">
                 and l.job_execution_id = #{jobExecutionId}
             </if>
             <if test="launchStartTime != null">
@@ -221,11 +221,11 @@
             <if test="isAdminUser != null and isAdminUser == false">
                 and l.create_user = #{createUser}
             </if>
-            <if test="status.trim() != '' and status != null">
+            <if test="status != null and status.trim() != ''">
                 and l.status = #{status}
             </if>
             <!--如果name有值，则模糊匹配name-->
-            <if test="jobName.trim() != '' and jobName != null">
+            <if test="jobName != null and jobName.trim() != ''">
                 and l.name like concat('%', #{jobName}, '%')
             </if>
             <!--如果jobNameExact有值，则精确匹配job_name（不走模糊搜索，走idx_job_name索引）-->
@@ -252,7 +252,7 @@
         FROM
         `exchangis_launched_job_entity` l
         <where>
-            <if test="jobExecutionId.trim() != '' and jobExecutionId != null">
+            <if test="jobExecutionId != null and jobExecutionId.trim() != ''">
                 and l.job_execution_id = #{jobExecutionId}
             </if>
             <if test="launchStartTime != null">
@@ -264,10 +264,10 @@
             <if test="isAdminUser != null and isAdminUser == false">
                 and l.create_user = #{createUser}
             </if>
-            <if test="status.trim() != '' and status != null">
+            <if test="status != null and status.trim() != ''">
                 and l.status = #{status}
             </if>
-            <if test="jobName.trim() != '' and jobName != null">
+            <if test="jobName != null and jobName.trim() != ''">
                 and l.name like concat('%', #{jobName}, '%')
             </if>
             <!--如果jobNameExact有值，则精确匹配job_name（不走模糊搜索，与分页查询保持一致）-->
@@ -286,17 +286,17 @@
         FROM
         <include refid="TableName"/>
         <where>
-            <if test="jobExecutionId.trim() != '' and jobExecutionId != null">
+            <if test="jobExecutionId != null and jobExecutionId.trim() != ''">
                 and job_execution_id = #{jobExecutionId}
             </if>
             <!--如果name有值，则模糊匹配name-->
-            <if test="jobName.trim() != '' and jobName != null">
+            <if test="jobName != null and jobName.trim() != ''">
                 and name like concat('%', #{jobName}, '%')
             </if>
-            <if test="loginUser.trim() != '' and loginUser != null">
+            <if test="loginUser != null and loginUser.trim() != ''">
                 and create_user like concat('%', #{loginUser}, '%')
             </if>
-            <if test="status.trim() != '' and status != null">
+            <if test="status != null and status.trim() != ''">
                 and status = #{status}
             </if>
             <if test="launchStartTime != null">
