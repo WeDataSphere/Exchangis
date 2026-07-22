@@ -32,7 +32,8 @@ public class FileColumnDefine {
     private String inferredType;
 
     /**
-     * Sample values (first few) / 采样值前几条
+     * Sample values - only the first non-null value is kept (single-element list).
+     * 采样值 - 仅保留第一个非空值（单元素列表）。
      */
     private List<String> sampleValues = new ArrayList<>();
 

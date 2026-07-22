@@ -167,12 +167,10 @@ class StreamFileHeaderParserTest {
     }
 
     @Test
-    @DisplayName("Sample values are deduplicated (最多 5 个去重采样值，重复值不重复收录)")
-    void testSampleValuesDeduplicated() {
-        // status column: A,A,B,C,A,D,E -> distinct values A,B,C,D,E (5, skipping duplicate A's)
-        // Without dedup the first 5 non-null values would be [A,A,B,C,A] (3 A's duplicated).
-        // status 列：A,A,B,C,A,D,E -> 去重后 A,B,C,D,E（5 个，跳过重复的 A）。
-        // 不去重则前 5 个非空值为 [A,A,B,C,A]（3 个 A 重复）。
+    @DisplayName("Only the first non-null sample value is kept (仅保留第一个非空采样值)")
+    void testSampleValuesKeepFirstOnly() {
+        // status column: A,A,B,C,A,D,E -> only the first non-null value "A" is kept.
+        // status 列：A,A,B,C,A,D,E -> 仅保留第一个非空值 "A"。
         String csv = String.join("\n",
                 "status,extra",
                 "A,x",
@@ -188,33 +186,29 @@ class StreamFileHeaderParserTest {
 
         List<FileColumnDefine> columns = result.getColumns();
         List<String> statusSamples = columns.get(0).getSampleValues();
-        assertEquals(java.util.Arrays.asList("A", "B", "C", "D", "E"), statusSamples,
-                "status samples should be 5 distinct values [A,B,C,D,E] (status 采样应为 5 个去重值 [A,B,C,D,E])");
+        assertEquals(java.util.Arrays.asList("A"), statusSamples,
+                "status samples should keep only the first value [A] (status 采样应仅保留第一个值 [A])");
     }
 
     @Test
-    @DisplayName("Sample values cap at 5 distinct (去重后上限仍为 5)")
-    void testSampleValuesCappedAtFiveDistinct() {
-        // 7 distinct values; only the first 5 distinct are kept.
-        // 7 个不同值，仅保留前 5 个不同的。
+    @DisplayName("Sample is the first non-null value, skipping leading nulls "
+            + "(采样值为第一个非空值，跳过前导空值)")
+    void testSampleValuesSkipsLeadingNulls() {
+        // The first data row's value is null (\\N), so the sample should be the first
+        // non-null value "B", not null.
+        // 第一行数据值为空(\\N)，故采样值应为第一个非空值 "B"。
         String csv = String.join("\n",
                 "v,extra",
-                "v1,x",
-                "v2,y",
-                "v3,z",
-                "v4,w",
-                "v5,q",
-                "v6,r",
-                "v7,t");
+                "\\N,x",
+                "B,y",
+                "C,z");
         byte[] bytes = csv.getBytes(StandardCharsets.UTF_8);
         FileParseResult result = parser.parse(bytes, bytes.length, "test.csv", bytes.length, 100, 1);
         assertNull(result.getErrorCode(), "Parse should succeed (解析应成功)");
 
         List<String> samples = result.getColumns().get(0).getSampleValues();
-        assertEquals(5, samples.size(), "Samples should cap at 5 (采样上限 5)");
-        // distinctness: no duplicates (无重复)
-        assertEquals(samples.size(), new java.util.HashSet<>(samples).size(),
-                "Samples must be distinct (采样值必须去重)");
+        assertEquals(java.util.Arrays.asList("B"), samples,
+                "Sample should be the first non-null value [B] (采样值应为第一个非空值 [B])");
     }
 
     @Test
