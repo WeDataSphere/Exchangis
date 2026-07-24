@@ -116,6 +116,26 @@ public class StreamFileHeaderParser {
     }
 
     /**
+     * Max bytes decoded per encoding candidate for the replacement-rate sanity check. Bounded so
+     * trial-decoding many candidates stays cheap; 32KB is plenty to estimate the U+FFFD ratio.
+     * 每个编码候选为替换率健全性校验解码的最大字节数。有界以控制多候选尝试成本；32KB 足以估算 U+FFFD 占比。
+     */
+    private static final int RATE_CHECK_LIMIT = 32 * 1024;
+
+    /**
+     * Read the encoding replacement-rate threshold from config; fall back to 1% when CommonVars is
+     * unavailable (e.g. unit tests without Linkis config bootstrap).
+     * 从配置读取编码替换率阈值；CommonVars 不可用时（如未引导 Linkis 配置的单元测试）回退 1%。
+     */
+    private static double getEncodingReplacementThreshold() {
+        try {
+            return FileSourceConfiguration.ENCODING_REPLACEMENT_THRESHOLD.getValue();
+        } catch (Throwable t) {
+            return 0.01;
+        }
+    }
+
+    /**
      * Build the combined date formats: base formats + extra patterns parsed from a
      * comma-separated config string. Invalid patterns are skipped with a warning.
      * 构建完整日期格式：基础格式 + 逗号分隔配置字符串解析出的额外模式；无效模式跳过并告警。
@@ -201,6 +221,15 @@ public class StreamFileHeaderParser {
 
         // 3. Split into lines (handle \r\n / \n / \r) / 按行切分
         List<String> lines = splitLines(text);
+        // If the buffer was truncated (file larger than the parse buffer), the last line may be
+        // cut mid-character/mid-field and contain a stray U+FFFD. Drop it so it doesn't pollute
+        // separator scoring / type inference / samples. Only the last line (buffer tail) is affected.
+        // 缓冲被截断时（文件大于解析缓冲），末行可能在字符/字段中间被切断并含孤立 U+FFFD，丢弃以免污染
+        // 分隔符打分/类型推断/采样。仅末行（缓冲尾部）受影响。
+        if (length < fileSize && !lines.isEmpty()
+                && lines.get(lines.size() - 1).indexOf('�') >= 0) {
+            lines.remove(lines.size() - 1);
+        }
         if (lines.isEmpty()) {
             result.setErrorCode(ERR_EMPTY);
             result.setErrorMsg("Empty file (文件为空)");
@@ -314,12 +343,20 @@ public class StreamFileHeaderParser {
             return enc;
         }
         if (length >= 2 && (buffer[0] & 0xFF) == 0xFF && (buffer[1] & 0xFF) == 0xFE) {
-            EncodingDetection enc = new EncodingDetection();
-            enc.charset = Charset.forName("UTF-16LE");
-            enc.hasBom = true;
-            enc.bomLength = 2;
-            enc.confidence = 100;
-            return enc;
+            // FF FE is shared by UTF-16LE and UTF-32LE (FF FE 00 00). Distinguish by bytes 2-3:
+            // UTF-32LE has zeros at [2],[3]. The JDK has no native UTF-32 charset, so for UTF-32LE
+            // we fall through to ICU4J instead of silently misdecoding as UTF-16LE.
+            // FF FE 同时是 UTF-16LE 与 UTF-32LE(FF FE 00 00) 的 BOM，用第 2-3 字节区分：UTF-32LE 在
+            // [2],[3] 为 0。JDK 无原生 UTF-32 字符集，UTF-32LE 交给 ICU4J，避免静默按 UTF-16LE 误解码。
+            if (!(length >= 4 && (buffer[2] & 0xFF) == 0x00 && (buffer[3] & 0xFF) == 0x00)) {
+                EncodingDetection enc = new EncodingDetection();
+                enc.charset = Charset.forName("UTF-16LE");
+                enc.hasBom = true;
+                enc.bomLength = 2;
+                enc.confidence = 100;
+                return enc;
+            }
+            LOG.warn("UTF-32LE BOM detected; JDK has no native UTF-32, falling back to ICU4J (检测到 UTF-32LE BOM，JDK 无原生 UTF-32，回退 ICU4J)");
         }
         if (length >= 2 && (buffer[0] & 0xFF) == 0xFE && (buffer[1] & 0xFF) == 0xFF) {
             EncodingDetection enc = new EncodingDetection();
@@ -329,34 +366,130 @@ public class StreamFileHeaderParser {
             enc.confidence = 100;
             return enc;
         }
-        // ICU4J detection (ICU4J 检测)
+        // ICU4J detection with candidate clean-decode trial (ICU4J 检测 + 候选择优)
+        // Fixes the bug where a low-confidence ICU4J match (e.g. ISO-8859-1 for a GBK file) was
+        // trusted blindly: permissive single-byte charsets decode almost any byte without U+FFFD,
+        // so "no replacement char" alone does not prove correctness. We (1) take ICU4J's ranked
+        // detectAll() candidates, (2) trial-decode a bounded prefix of each and measure the U+FFFD
+        // ratio, (3) pick the first CLEAN MULTI-BYTE candidate (deprioritizing permissive
+        // single-byte ones which are frequent CJK false positives). If no clean multi-byte
+        // candidate exists, fall back to the lowest-replacement-rate candidate (this correctly
+        // keeps a true Latin-1 file on ISO-8859-1).
+        // 修复「盲信 ICU4J 低置信度结果（如 GBK 被误判 ISO-8859-1）」缺陷：宽松单字节编码几乎不产生
+        // U+FFFD，「无替换字符」不能证明正确。故取 ICU4J 排序候选 detectAll()，逐个解码前缀测 U+FFFD 占比，
+        // 选首个「干净」多字节候选（降低宽松单字节候选优先级，因其常是 CJK 误检）；若无干净多字节候选，
+        // 回退到替换率最低者（这样真正的 Latin-1 文件仍会选 ISO-8859-1）。
         try {
             byte[] sample = length == buffer.length ? buffer : Arrays.copyOf(buffer, length);
             CharsetDetector detector = new CharsetDetector();
             detector.setText(sample);
-            CharsetMatch match = detector.detect();
-            if (match == null) {
+            CharsetMatch[] matches = detector.detectAll();
+            if (matches == null || matches.length == 0) {
                 return null;
             }
-            String name = match.getName();
-            int confidence = match.getConfidence();
-            // Fallback to UTF-8 if confidence too low / 置信度过低兜底 UTF-8
-            Charset charset;
-            try {
-                charset = Charset.forName(name);
-            } catch (Exception e) {
-                charset = StandardCharsets.UTF_8;
+            double threshold = getEncodingReplacementThreshold();
+            // Pass 1: first (highest-confidence) clean multi-byte candidate wins.
+            // Pass 1：首个（置信度最高）「干净」多字节候选胜出。
+            Charset chosen = null;
+            int chosenConfidence = 0;
+            for (CharsetMatch m : matches) {
+                Charset cs;
+                try {
+                    cs = Charset.forName(m.getName());
+                } catch (Exception e) {
+                    continue;
+                }
+                if (!isPermissiveSingleByte(cs) && replacementRate(sample, cs) <= threshold) {
+                    chosen = cs;
+                    chosenConfidence = m.getConfidence();
+                    break;
+                }
+            }
+            // Pass 2: no clean multi-byte candidate -> pick the lowest-replacement-rate candidate
+            // overall (a true Latin-1 file stays on ISO-8859-1; a file ICU4J failed to identify
+            // gets the least-garbled option).
+            // Pass 2：无干净多字节候选 -> 取替换率最低者（真 Latin-1 文件仍选 ISO-8859-1；ICU4J 未识别者取最少乱码项）。
+            if (chosen == null) {
+                Charset best = null;
+                double bestRate = Double.MAX_VALUE;
+                int bestConfidence = 0;
+                for (CharsetMatch m : matches) {
+                    Charset cs;
+                    try {
+                        cs = Charset.forName(m.getName());
+                    } catch (Exception e) {
+                        continue;
+                    }
+                    double rate = replacementRate(sample, cs);
+                    if (rate < bestRate) {
+                        bestRate = rate;
+                        best = cs;
+                        bestConfidence = m.getConfidence();
+                    }
+                }
+                if (best != null) {
+                    chosen = best;
+                    chosenConfidence = bestConfidence;
+                    LOG.warn("No clean multi-byte encoding candidate; using lowest-replacement-rate "
+                            + "(无干净多字节编码候选，使用替换率最低者): {}, rate={}", chosen.name(), bestRate);
+                }
+            }
+            if (chosen == null) {
+                return null;
             }
             EncodingDetection enc = new EncodingDetection();
-            enc.charset = charset;
+            enc.charset = chosen;
             enc.hasBom = false;
             enc.bomLength = 0;
-            enc.confidence = confidence;
+            enc.confidence = chosenConfidence;
             return enc;
         } catch (Exception e) {
             LOG.warn("ICU4J charset detection failed (ICU4J 编码检测失败): {}", e.getMessage());
             return null;
         }
+    }
+
+    /**
+     * Decode a bounded prefix of the sample with the given charset and return the ratio of
+     * U+FFFD replacement chars. Strict multi-byte charsets (UTF-8/GBK) emit U+FFFD for invalid
+     * byte sequences, so a low rate means the charset plausibly fits the content. Package-private
+     * for unit testing.
+     * 用给定编码解码采样前缀，返回 U+FFFD 替换字符占比。严格多字节编码（UTF-8/GBK）对非法字节序列产生
+     * U+FFFD，占比低说明该编码与内容匹配。包级可见以便单元测试。
+     */
+    double replacementRate(byte[] sample, Charset cs) {
+        int limit = Math.min(sample.length, RATE_CHECK_LIMIT);
+        String decoded = new String(sample, 0, limit, cs);
+        if (decoded.isEmpty()) {
+            return 0.0;
+        }
+        int replacements = 0;
+        for (int i = 0; i < decoded.length(); i++) {
+            if (decoded.charAt(i) == '�') {
+                replacements++;
+            }
+        }
+        return (double) replacements / decoded.length();
+    }
+
+    /**
+     * Whether the charset is a "permissive" single-byte encoding (ISO-8859-*, windows-125*,
+     * US-ASCII, ...). These map almost every byte to a char and never emit U+FFFD, so a clean
+     * decode does NOT prove correctness - they are frequent false positives for CJK content
+     * (e.g. a GBK file misdetected as ISO-8859-1). Used to deprioritize such candidates.
+     * Package-private for unit testing.
+     * 是否为「宽松」单字节编码（ISO-8859-*, windows-125*, US-ASCII 等）。此类编码几乎把每个字节都映射成
+     * 字符、从不产生 U+FFFD，故「干净解码」不能证明正确--常是 CJK 内容的误检（如 GBK 被误判 ISO-8859-1）。
+     * 据此降低其优先级。包级可见以便单元测试。
+     */
+    boolean isPermissiveSingleByte(Charset cs) {
+        String name = cs.name().toLowerCase(Locale.ROOT);
+        return name.startsWith("iso-8859") || name.startsWith("iso8859")
+                || name.startsWith("windows-125") || name.startsWith("cp125")
+                || name.equals("us-ascii") || name.equals("ascii")
+                || name.equals("latin1") || name.equals("latin-1")
+                || name.equals("tis-620") || name.startsWith("koi8")
+                || name.startsWith("macroman") || name.startsWith("mac-roman");
     }
 
     /**

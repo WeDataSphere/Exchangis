@@ -64,6 +64,19 @@ public class FileSourceConfiguration {
             CommonVars.apply("wds.exchangis.file-source.date-infer-extra-formats", "");
 
     /**
+     * Max ratio of U+FFFD replacement chars tolerated when trial-decoding an encoding candidate
+     * during charset detection (编码检测候选择优时允许的 U+FFFD 替换字符占比上限), default 0.01 (1%).
+     *
+     * <p>A correct encoding decodes real text with ~0 replacement chars; a wrong multi-byte
+     * encoding (e.g. GBK bytes decoded as UTF-8) produces many. Candidates whose replacement
+     * rate exceeds this are "dirty" and only used as a last resort. Permissive single-byte
+     * charsets (ISO-8859-1/windows-1252) always decode at rate 0, so they are deprioritized
+     * separately in {@code StreamFileHeaderParser.detectEncoding}.
+     */
+    public static final CommonVars<Double> ENCODING_REPLACEMENT_THRESHOLD =
+            CommonVars.apply("wds.exchangis.file-source.encoding-replacement-threshold", 0.01);
+
+    /**
      * Multipart config for large file uploads (大文件上传 multipart 配置)
      *
      * <p>Registered programmatically so that {@code application.yml} stays minimal and the limit

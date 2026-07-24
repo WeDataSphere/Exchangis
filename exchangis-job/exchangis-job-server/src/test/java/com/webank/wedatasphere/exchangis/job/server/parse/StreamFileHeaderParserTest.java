@@ -4,13 +4,16 @@ import org.apache.commons.lang3.time.FastDateFormat;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
+import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
 import java.text.ParsePosition;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -292,5 +295,75 @@ class StreamFileHeaderParserTest {
         FileParseResult result = parser.parse(bytes, bytes.length, fileName, bytes.length, 10, 1);
         assertNull(result.getErrorCode(), "Parse should succeed (解析应成功)");
         return result.getFileFormat();
+    }
+
+    @Test
+    @DisplayName("GBK file is detected and decoded without mojibake (GBK 文件正确检测解码无乱码)")
+    void testGbkEncodingDetected() throws Exception {
+        // GBK-encoded Chinese with enough CJK chars for ICU4J to surface a GB candidate. Before
+        // the fix ICU4J's top match (often ISO-8859-1) was trusted blindly -> mojibake.
+        // GBK 编码中文，CJK 字符足够让 ICU4J 给出 GB 系候选。修复前盲信 ICU4J 最高候选
+        // （常为 ISO-8859-1）-> 乱码。
+        String text = "姓名,年龄,城市\n张三,30,北京\n李四,25,上海\n王五,40,广州\n";
+        byte[] gbkBytes = text.getBytes("GBK");
+        FileParseResult result = parser.parse(gbkBytes, gbkBytes.length, "data.csv", gbkBytes.length, 10, 1);
+        assertNull(result.getErrorCode(), "Parse should succeed (解析应成功): " + result.getErrorMsg());
+        // encoding should be GBK/GB18030 family, NOT a permissive single-byte misdetection.
+        // 编码应为 GBK/GB18030 系列，而非宽松单字节误检。
+        String enc = result.getEncoding().toUpperCase(Locale.ROOT);
+        assertTrue(enc.contains("GB"), "GBK file encoding should be GB family (GBK 文件编码应为 GB 系), got: " + enc);
+        // header decoded correctly (no mojibake / U+FFFD).
+        // 表头正确解码（无乱码 / U+FFFD）。
+        java.util.List<String> colNames = new java.util.ArrayList<>();
+        for (FileColumnDefine col : result.getColumns()) {
+            colNames.add(col.getOriginalName());
+        }
+        assertTrue(colNames.contains("姓名"), "Header 姓名 should decode correctly (表头 姓名 应正确解码), got: " + colNames);
+    }
+
+    @Test
+    @DisplayName("Truncated buffer drops last line containing U+FFFD (截断缓冲丢弃含 U+FFFD 的末行)")
+    void testTruncatedBufferDropsGarbledLastLine() {
+        // A UTF-8 BOM forces deterministic UTF-8 detection (bypassing ICU4J), so a trailing
+        // incomplete 3-byte UTF-8 sequence (0xE4 0xB8) reliably becomes U+FFFD and exercises the
+        // truncation drop. fileSize > buffer length signals truncation; without the drop the
+        // garbled tail line (1 field) breaks separator scoring.
+        // UTF-8 BOM 强制确定性检出 UTF-8（绕过 ICU4J），末尾不完整 3 字节 UTF-8 序列(0xE4 0xB8)可靠地
+        // 变成 U+FFFD 以验证截断丢弃；fileSize > 缓冲长度标记截断，不丢弃则乱码末行(1 字段)破坏分隔符打分。
+        byte[] bom = new byte[]{(byte) 0xEF, (byte) 0xBB, (byte) 0xBF};
+        byte[] body = "id,name\n1,abc\n2,def\n".getBytes(StandardCharsets.UTF_8);
+        byte[] truncated = new byte[bom.length + body.length + 2];
+        System.arraycopy(bom, 0, truncated, 0, bom.length);
+        System.arraycopy(body, 0, truncated, bom.length, body.length);
+        truncated[truncated.length - 2] = (byte) 0xE4;
+        truncated[truncated.length - 1] = (byte) 0xB8;
+        FileParseResult result = parser.parse(truncated, truncated.length, "data.csv", truncated.length + 100, 10, 1);
+        assertNull(result.getErrorCode(), "Parse should succeed (解析应成功): " + result.getErrorMsg());
+        // 2 valid data rows; the garbled partial tail line is dropped.
+        // 2 行有效数据，乱码残缺末行被丢弃。
+        assertEquals(2, result.getSampledRowCount(), "Garbled truncated tail line should be dropped (截断乱码末行应被丢弃)");
+        assertEquals(",", String.valueOf(result.getSeparator()), "Separator should be comma (分隔符应为逗号)");
+    }
+
+    @Test
+    @DisplayName("isPermissiveSingleByte flags ISO-8859-1/windows-1252 but not UTF-8/GBK (宽松单字节判定)")
+    void testIsPermissiveSingleByte() {
+        assertTrue(parser.isPermissiveSingleByte(Charset.forName("ISO-8859-1")));
+        assertTrue(parser.isPermissiveSingleByte(Charset.forName("windows-1252")));
+        assertFalse(parser.isPermissiveSingleByte(StandardCharsets.UTF_8));
+        assertFalse(parser.isPermissiveSingleByte(Charset.forName("GBK")));
+    }
+
+    @Test
+    @DisplayName("replacementRate is 0 for matching charset, >0 for mismatch (替换率：匹配为 0，不匹配 >0)")
+    void testReplacementRate() throws Exception {
+        byte[] utf8 = "姓名,年龄\n".getBytes(StandardCharsets.UTF_8);
+        assertEquals(0.0, parser.replacementRate(utf8, StandardCharsets.UTF_8), 1e-9,
+                "UTF-8 bytes as UTF-8 -> 0 replacement (UTF-8 字节按 UTF-8 解码替换率 0)");
+        // GBK bytes decoded as UTF-8 -> many invalid sequences -> >0 replacement rate.
+        // GBK 字节按 UTF-8 解码 -> 大量非法序列 -> 替换率 >0。
+        byte[] gbk = "姓名,年龄\n".getBytes("GBK");
+        double rate = parser.replacementRate(gbk, StandardCharsets.UTF_8);
+        assertTrue(rate > 0.0, "GBK bytes as UTF-8 should have >0 replacement (GBK 按 UTF-8 解码替换率应 >0), got: " + rate);
     }
 }
