@@ -77,6 +77,20 @@ public class FileSourceConfiguration {
             CommonVars.apply("wds.exchangis.file-source.encoding-replacement-threshold", 0.01);
 
     /**
+     * Comma-separated CJK encoding priority (highest first), used to break ties when several CJK
+     * multi-byte charsets all decode a sample cleanly (e.g. a GBK file also decodes cleanly under
+     * EUC-KR, since their byte ranges overlap and neither produces U+FFFD). Lower position =
+     * higher priority. A Korean deployment can put EUC-KR before GB18030.
+     *
+     * 逗号分隔的 CJK 编码优先级（从高到低），用于多个 CJK 多字节编码都能干净解码时打破平局
+     * （如 GBK 文件在 EUC-KR 下也能干净解码，二者字节范围重叠且都不产生 U+FFFD）。位置越前优先级越高。
+     * 韩文部署可将 EUC-KR 置于 GB18030 之前。
+     */
+    public static final CommonVars<String> CJK_ENCODING_PRIORITY =
+            CommonVars.apply("wds.exchangis.file-source.cjk-encoding-priority",
+                    "UTF-8,GB18030,GBK,GB2312,Big5,Shift_JIS,windows-31j,EUC-JP,EUC-KR,ISO-2022-JP,ISO-2022-KR");
+
+    /**
      * Multipart config for large file uploads (大文件上传 multipart 配置)
      *
      * <p>Registered programmatically so that {@code application.yml} stays minimal and the limit

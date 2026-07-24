@@ -366,4 +366,23 @@ class StreamFileHeaderParserTest {
         double rate = parser.replacementRate(gbk, StandardCharsets.UTF_8);
         assertTrue(rate > 0.0, "GBK bytes as UTF-8 should have >0 replacement (GBK 按 UTF-8 解码替换率应 >0), got: " + rate);
     }
+
+    @Test
+    @DisplayName("cjkPriority: UTF-8 first, GBK before EUC-KR, aliases match, non-CJK=-1 (CJK 优先级与别名匹配)")
+    void testCjkPriority() {
+        // lower index = higher priority
+        assertEquals(0, parser.cjkPriority(StandardCharsets.UTF_8),
+                "UTF-8 should be priority 0 (UTF-8 优先级 0)");
+        assertTrue(parser.cjkPriority(Charset.forName("GB18030")) < parser.cjkPriority(Charset.forName("EUC-KR")),
+                "GB18030 should outrank EUC-KR (GB18030 优先级高于 EUC-KR)");
+        assertTrue(parser.cjkPriority(Charset.forName("GBK")) < parser.cjkPriority(Charset.forName("EUC-KR")),
+                "GBK should outrank EUC-KR so GBK files are not misdetected as Korean (GBK 优先级高于 EUC-KR，避免 GBK 误判韩文)");
+        // alias matches canonical: ks_c_5601-1987 is an alias of EUC-KR
+        assertEquals(parser.cjkPriority(Charset.forName("EUC-KR")),
+                parser.cjkPriority(Charset.forName("ks_c_5601-1987")),
+                "alias ks_c_5601-1987 should match EUC-KR priority (别名应命中 EUC-KR 优先级)");
+        // non-CJK -> -1
+        assertEquals(-1, parser.cjkPriority(Charset.forName("ISO-8859-1")),
+                "ISO-8859-1 is not in CJK priority list (ISO-8859-1 不在 CJK 优先级表)");
+    }
 }

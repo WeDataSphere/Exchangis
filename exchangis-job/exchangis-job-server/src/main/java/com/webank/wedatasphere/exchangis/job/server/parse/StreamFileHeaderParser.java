@@ -136,6 +136,88 @@ public class StreamFileHeaderParser {
     }
 
     /**
+     * Default CJK encoding priority (highest first). Used to break ties when several CJK
+     * multi-byte charsets all decode a sample cleanly (e.g. a GBK file also decodes cleanly
+     * under EUC-KR, since their byte ranges overlap and neither produces U+FFFD). Lower index =
+     * higher priority. Overridable via {@link FileSourceConfiguration#CJK_ENCODING_PRIORITY}.
+     *
+     * 默认 CJK 编码优先级（从高到低）。用于多个 CJK 多字节编码都能干净解码时打破平局（如 GBK 文件
+     * 在 EUC-KR 下也能干净解码，二者字节范围重叠且都不产生 U+FFFD）。索引越小优先级越高。
+     * 可通过 {@link FileSourceConfiguration#CJK_ENCODING_PRIORITY} 覆盖。
+     */
+    static final String DEFAULT_CJK_PRIORITY_CSV =
+            "UTF-8,GB18030,GBK,GB2312,Big5,Shift_JIS,windows-31j,EUC-JP,EUC-KR,ISO-2022-JP,ISO-2022-KR";
+
+    private static volatile List<Charset> cachedCjkPriority;
+
+    /**
+     * Get the CJK encoding priority as a list of {@link Charset} (cached). Lazily built on first
+     * use so Linkis CommonVars / {@link FileSourceConfiguration} is initialized.
+     * 获取 CJK 编码优先级（Charset 列表，懒缓存），确保 CommonVars/FileSourceConfiguration 已初始化。
+     */
+    private static List<Charset> getCjkPriorityCharsets() {
+        List<Charset> cached = cachedCjkPriority;
+        if (cached != null) {
+            return cached;
+        }
+        synchronized (StreamFileHeaderParser.class) {
+            if (cachedCjkPriority == null) {
+                cachedCjkPriority = buildCjkPriority(readCjkPriorityConfig());
+            }
+            return cachedCjkPriority;
+        }
+    }
+
+    private static String readCjkPriorityConfig() {
+        try {
+            return FileSourceConfiguration.CJK_ENCODING_PRIORITY.getValue();
+        } catch (Throwable t) {
+            LOG.warn("Cannot read CJK encoding priority config, use default (无法读取 CJK 编码优先级配置，使用默认): {}", t.getMessage());
+            return DEFAULT_CJK_PRIORITY_CSV;
+        }
+    }
+
+    /**
+     * Parse a comma-separated CJK encoding priority into a list of {@link Charset}. Unknown
+     * names are skipped with a warning. Package-private for unit testing.
+     * 将逗号分隔的 CJK 编码优先级解析为 Charset 列表；未知名称跳过并告警。包级可见以便单元测试。
+     */
+    static List<Charset> buildCjkPriority(String csv) {
+        List<Charset> list = new ArrayList<>();
+        if (csv != null) {
+            for (String token : csv.split(",")) {
+                String name = token.trim();
+                if (name.isEmpty()) {
+                    continue;
+                }
+                try {
+                    list.add(Charset.forName(name));
+                } catch (Exception e) {
+                    LOG.warn("Skip unknown CJK encoding in priority config (跳过优先级配置中未知编码): [{}]", name);
+                }
+            }
+        }
+        return list;
+    }
+
+    /**
+     * Return the CJK priority index of the charset (lower = preferred), or -1 if it is not in the
+     * priority list. Comparison is by canonical name ({@link Charset#equals}), so aliases (e.g.
+     * {@code ks_c_5601-1987} for EUC-KR) match. Package-private for unit testing.
+     * 返回该编码的 CJK 优先级索引（越小越优先），不在列表返回 -1。按规范名({@link Charset#equals})比较，
+     * 故别名（如 EUC-KR 的 ks_c_5601-1987）可命中。包级可见以便单元测试。
+     */
+    int cjkPriority(Charset cs) {
+        List<Charset> list = getCjkPriorityCharsets();
+        for (int i = 0; i < list.size(); i++) {
+            if (cs.equals(list.get(i))) {
+                return i;
+            }
+        }
+        return -1;
+    }
+
+    /**
      * Build the combined date formats: base formats + extra patterns parsed from a
      * comma-separated config string. Invalid patterns are skipped with a warning.
      * 构建完整日期格式：基础格式 + 逗号分隔配置字符串解析出的额外模式；无效模式跳过并告警。
@@ -371,13 +453,14 @@ public class StreamFileHeaderParser {
         // trusted blindly: permissive single-byte charsets decode almost any byte without U+FFFD,
         // so "no replacement char" alone does not prove correctness. We (1) take ICU4J's ranked
         // detectAll() candidates, (2) trial-decode a bounded prefix of each and measure the U+FFFD
-        // ratio, (3) pick the first CLEAN MULTI-BYTE candidate (deprioritizing permissive
-        // single-byte ones which are frequent CJK false positives). If no clean multi-byte
+        // ratio, (3) among clean multi-byte candidates pick by CJK priority (UTF-8>GB18030>
+        // GBK>...>EUC-KR) to break GBK-vs-EUC-KR ties where both decode cleanly, else by ICU4J
+        // confidence; permissive single-byte charsets are deprioritized. If no clean multi-byte
         // candidate exists, fall back to the lowest-replacement-rate candidate (this correctly
         // keeps a true Latin-1 file on ISO-8859-1).
         // 修复「盲信 ICU4J 低置信度结果（如 GBK 被误判 ISO-8859-1）」缺陷：宽松单字节编码几乎不产生
         // U+FFFD，「无替换字符」不能证明正确。故取 ICU4J 排序候选 detectAll()，逐个解码前缀测 U+FFFD 占比，
-        // 选首个「干净」多字节候选（降低宽松单字节候选优先级，因其常是 CJK 误检）；若无干净多字节候选，
+        // 干净多字节候选中按 CJK 优先级(UTF-8>GB18030>GBK>...>EUC-KR)选取以打破 GBK 与 EUC-KR 都干净解码的平局，否则按 ICU4J 置信度；若无干净多字节候选，
         // 回退到替换率最低者（这样真正的 Latin-1 文件仍会选 ISO-8859-1）。
         try {
             byte[] sample = length == buffer.length ? buffer : Arrays.copyOf(buffer, length);
@@ -388,10 +471,18 @@ public class StreamFileHeaderParser {
                 return null;
             }
             double threshold = getEncodingReplacementThreshold();
-            // Pass 1: first (highest-confidence) clean multi-byte candidate wins.
-            // Pass 1：首个（置信度最高）「干净」多字节候选胜出。
+            // Pass 1: collect clean multi-byte candidates, then choose by CJK priority (breaks
+            // GBK-vs-EUC-KR ties where both decode cleanly without U+FFFD) falling back to ICU4J
+            // confidence for non-CJK ambiguity. Permissive single-byte charsets are excluded.
+            // Pass 1：收集「干净」多字节候选，再按 CJK 优先级选取（打破 GBK 与 EUC-KR 都能干净解码、
+            // 不产生 U+FFFD 的平局），非 CJK 歧义回退 ICU4J 置信度。宽松单字节编码排除。
             Charset chosen = null;
             int chosenConfidence = 0;
+            Charset bestCjk = null;
+            int bestCjkPriorityIdx = Integer.MAX_VALUE;
+            int bestCjkConfidence = 0;
+            Charset bestByConf = null;
+            int bestConfValue = -1;
             for (CharsetMatch m : matches) {
                 Charset cs;
                 try {
@@ -399,11 +490,30 @@ public class StreamFileHeaderParser {
                 } catch (Exception e) {
                     continue;
                 }
-                if (!isPermissiveSingleByte(cs) && replacementRate(sample, cs) <= threshold) {
-                    chosen = cs;
-                    chosenConfidence = m.getConfidence();
-                    break;
+                if (isPermissiveSingleByte(cs) || replacementRate(sample, cs) > threshold) {
+                    continue;
                 }
+                int conf = m.getConfidence();
+                if (bestByConf == null || conf > bestConfValue) {
+                    bestByConf = cs;
+                    bestConfValue = conf;
+                }
+                int pri = cjkPriority(cs);
+                if (pri >= 0 && (bestCjk == null || pri < bestCjkPriorityIdx)) {
+                    bestCjk = cs;
+                    bestCjkPriorityIdx = pri;
+                    bestCjkConfidence = conf;
+                }
+            }
+            // Prefer a clean CJK candidate by priority (resolves CJK-vs-CJK ambiguity such as
+            // GBK misdetected as EUC-KR); otherwise the highest-confidence clean multi-byte one.
+            // 优先按优先级选干净 CJK 候选（解决 GBK 被误判 EUC-KR 等 CJK 互辨歧义）；否则取置信度最高的干净多字节候选。
+            if (bestCjk != null) {
+                chosen = bestCjk;
+                chosenConfidence = bestCjkConfidence;
+            } else if (bestByConf != null) {
+                chosen = bestByConf;
+                chosenConfidence = bestConfValue;
             }
             // Pass 2: no clean multi-byte candidate -> pick the lowest-replacement-rate candidate
             // overall (a true Latin-1 file stays on ISO-8859-1; a file ICU4J failed to identify
