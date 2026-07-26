@@ -33,3 +33,12 @@ CREATE TABLE IF NOT EXISTS `exchangis_job_file_resources` (
 -- Add index for job_name field in exchangis_launched_job_entity table
 -- 为exchangis_launched_job_entity表的job_name字段添加索引（支持 listJobs 的 jobNameExact 精确查询，消除全表扫描）
 ALTER TABLE exchangis_launched_job_entity ADD INDEX `idx_job_name`(`job_name`);
+
+-- Add composite indexes for create_user/execute_user on exchangis_launched_job_entity
+-- to support the non-admin listJobs filter (create_user OR execute_user), avoiding a full
+-- table scan via index_merge; create_time is the 2nd column to help ORDER BY create_time DESC.
+-- 为 exchangis_launched_job_entity 的 create_user/execute_user 添加复合索引，支撑非管理员
+-- listJobs 的 (create_user OR execute_user) 过滤、经 index_merge 避免全表扫描；第二列含
+-- create_time 以辅助 ORDER BY create_time DESC。
+ALTER TABLE exchangis_launched_job_entity ADD INDEX `idx_create_user`(`create_user`, `create_time`);
+ALTER TABLE exchangis_launched_job_entity ADD INDEX `idx_execute_user`(`execute_user`, `create_time`);

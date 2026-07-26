@@ -16,7 +16,6 @@ import com.webank.wedatasphere.exchangis.job.server.utils.JobAuthorityUtils;
 import com.webank.wedatasphere.exchangis.job.utils.JobParamValidator;
 import com.webank.wedatasphere.exchangis.job.vo.ExchangisJobVo;
 import com.webank.wedatasphere.exchangis.project.provider.service.ProjectOpenService;
-import org.apache.commons.lang.StringUtils;
 import org.apache.linkis.server.BDPJettyServerHelper;
 import org.apache.linkis.server.Message;
 import org.apache.linkis.server.security.SecurityFilter;
@@ -31,7 +30,6 @@ import javax.servlet.http.HttpServletRequest;
 import javax.validation.groups.Default;
 import java.util.Map;
 import java.util.Objects;
-import java.util.Optional;
 
 import static com.webank.wedatasphere.exchangis.job.exception.ExchangisJobExceptionCode.VALIDATE_JOB_ERROR;
 
@@ -192,9 +190,12 @@ public class ExchangisJobDssAppConnRestfulApi {
         } catch (JsonProcessingException e) {
             LOG.error("Parse execute content error: {}", e.getMessage());
         }
-        String execUser = Optional.ofNullable(params.get("execUser")).orElse("").toString();
         String originUser = SecurityFilter.getLoginUsername(request);
         String loginUser = UserUtils.getLoginUser(request);
+        // execUser should always be the login user (authenticated DSS user); do not use the
+        // payload-supplied execUser nor the stored jobInfo.executeUser.
+        // execUser 始终应为登录用户（已认证的 DSS 用户），不使用 payload 传入的 execUser 或 jobInfo 存储的 executeUser。
+        String execUser = loginUser;
         Message response = Message.ok();
         ExchangisJobInfo jobInfo = null;
         try {
@@ -229,7 +230,10 @@ public class ExchangisJobDssAppConnRestfulApi {
                 }
             }
 
-            execUser = StringUtils.isNotBlank(execUser)? execUser : jobInfo.getExecuteUser();
+            // execUser is always the login user; write it into jobInfo so downstream
+            // (task generation / launcher) uses the login user as the execute user.
+            // execUser 始终为登录用户；回写到 jobInfo，确保下游（任务生成/启动器）以登录用户作为执行用户。
+            jobInfo.setExecuteUser(execUser);
             LOG.info("Execute dss job name: [{}], id: [{}], createUser: [{}], execUser: [{}], loginUser: [{}]",
                     jobInfo.getName(), jobInfo.getId(), jobInfo.getCreateUser(),
                     execUser, loginUser);

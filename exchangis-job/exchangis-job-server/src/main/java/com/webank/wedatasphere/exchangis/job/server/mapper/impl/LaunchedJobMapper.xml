@@ -219,7 +219,8 @@
                 and l.create_time &lt;= #{launchEndTime}
             </if>
             <if test="isAdminUser != null and isAdminUser == false">
-                and l.create_user = #{createUser}
+                <!-- 非管理员：可见"自己创建"或"自己执行"的任务（create_user OR execute_user）；由 idx_create_user/idx_execute_user 复合索引支撑，index_merge 避免全表扫描 -->
+                and (l.create_user = #{createUser} or l.execute_user = #{createUser})
             </if>
             <if test="status != null and status.trim() != ''">
                 and l.status = #{status}
@@ -262,7 +263,8 @@
                 and l.create_time &lt;= #{launchEndTime}
             </if>
             <if test="isAdminUser != null and isAdminUser == false">
-                and l.create_user = #{createUser}
+                <!-- 非管理员：可见"自己创建"或"自己执行"的任务（create_user OR execute_user）；由 idx_create_user/idx_execute_user 复合索引支撑，index_merge 避免全表扫描 -->
+                and (l.create_user = #{createUser} or l.execute_user = #{createUser})
             </if>
             <if test="status != null and status.trim() != ''">
                 and l.status = #{status}
