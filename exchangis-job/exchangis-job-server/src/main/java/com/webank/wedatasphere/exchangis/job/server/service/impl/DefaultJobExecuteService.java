@@ -423,8 +423,21 @@ public class DefaultJobExecuteService implements JobExecuteService {
      * @param status    status
      * @return category log
      */
-    private ExchangisCategoryLogVo resultToCategoryLog(LogQuery logQuery, LogResult logResult, TaskStatus status) {
+    ExchangisCategoryLogVo resultToCategoryLog(LogQuery logQuery, LogResult logResult, TaskStatus status) {
         ExchangisCategoryLogVo categoryLogVo = new ExchangisCategoryLogVo();
+        // logResult (or its logs list) can be null when the upstream log fetcher (RPC remote
+        // response / queryLogs) returns no log list; normalize to an empty LogResult / empty
+        // list to avoid NPE in the password-scan loop / isEmpty below. processLogResult already
+        // null-guards logs. The output stays identical to the empty-logs case (logs: {}), so the
+        // frontend is unaffected. Package-private for unit testing.
+        // logResult（或其 logs 列表）在上游日志抓取器（RPC 远端响应/queryLogs）未返回日志列表时可能为
+        // null，归一化为空 LogResult / 空列表以避免下方密码扫描循环/isEmpty 空指针；processLogResult 已
+        // 对 logs 空值保护。输出与空日志场景完全一致（logs:{}），前端无感。包级可见以便单元测试。
+        if (logResult == null) {
+            logResult = new LogResult(0, false, new ArrayList<>());
+        } else if (logResult.getLogs() == null) {
+            logResult.setLogs(new ArrayList<>());
+        }
         boolean noLogs = logResult.getLogs().isEmpty();
         for (int i = 0; i < logResult.getLogs().size(); i++) {
             if (logResult.getLogs().get(i).contains("password")) {
